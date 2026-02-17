@@ -1,52 +1,21 @@
 import { initializeApp } from 'firebase/app';
-import { getDatabase, ref, onValue, get, Database } from 'firebase/database';
-
-/**
- * Firebase Configuration for ESP32 IoT Integration
- * 
- * Your ESP32 should write data to Firebase Realtime Database in this structure:
- * 
- * /streetlights
- *   /sl-001
- *     name: "Streetlight 1"
- *     location: "Main Street North"
- *     status: "on" | "off" | "flickering" | "dim"
- *     voltage: 220.5
- *     current: 0.85
- *     power: 187.4      (optional - calculated from V*I if not provided)
- *     timestamp: 1706745600000
- *   /sl-002
- *     ...
- *   /sl-003
- *     ...
- * 
- * ESP32 Arduino example:
- * ```cpp
- * #include <Firebase_ESP_Client.h>
- * 
- * Firebase.RTDB.setFloat(&fbdo, "/streetlights/sl-001/voltage", voltage);
- * Firebase.RTDB.setFloat(&fbdo, "/streetlights/sl-001/current", current);
- * Firebase.RTDB.setFloat(&fbdo, "/streetlights/sl-001/power", voltage * current);
- * Firebase.RTDB.setString(&fbdo, "/streetlights/sl-001/status", "on");
- * Firebase.RTDB.setInt(&fbdo, "/streetlights/sl-001/timestamp", millis());
- * ```
- */
+import { getDatabase, ref, onValue, get, set, Database } from 'firebase/database';
 
 const firebaseConfig = {
-  apiKey: import.meta. env.VITE_FIREBASE_API_KEY || '',
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || '',
-  databaseURL: import.meta.env.VITE_FIREBASE_DATABASE_URL || '',
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || '',
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || '',
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || '',
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || '',
+  apiKey: "AIzaSyA3-4Q8WusQ8ZiodnOMjZLeuB4Khvvzwjc",
+  authDomain: "streetlight-guardian.firebaseapp.com",
+  databaseURL: "https://streetlight-thesis-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "streetlight-guardian",
+  storageBucket: "streetlight-guardian.firebasestorage.app",
+  messagingSenderId: "1074697324873",
+  appId: "1:1074697324873:web:6e65d9e39693752d643298",
 };
 
 let app: ReturnType<typeof initializeApp> | null = null;
 let database: Database | null = null;
 
 export const initializeFirebase = () => {
-  if (!app && firebaseConfig.apiKey) {
+  if (!app) {
     app = initializeApp(firebaseConfig);
     database = getDatabase(app);
   }
@@ -60,4 +29,4 @@ export const getFirebaseDatabase = () => {
   return database;
 };
 
-export { ref, onValue, get };
+export { ref, onValue, get, set };
