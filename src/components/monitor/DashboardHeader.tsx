@@ -1,7 +1,7 @@
 import React from 'react';
 import { Button } from '@/components/ui/button';
 import { Lightbulb, Moon, Sun } from 'lucide-react';
-import NotificationCenter from './NotificationCenter';
+import NotificationCenter from '@/components/monitor/NotificationCenter';
 import { Notification } from '@/types/streetlight';
 
 interface DashboardHeaderProps {

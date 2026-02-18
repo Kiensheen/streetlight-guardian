@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Streetlight, Fault, Notification, LightStatus, HealthStatus, FaultType } from '@/types/streetlight';
-import { getFirebaseDatabase, ref, onValue } from '@/lib/firebase';
-import { seedFirebaseIfEmpty } from '@/lib/seedFirebase';
+import { getFirebaseDatabase, ref, onValue } from '@/lib/database';
+import { seedFirebaseIfEmpty } from '@/lib/databaseSeed';
 
 const faultTypeLabels: Record<FaultType, string> = {
   off_when_scheduled_on: 'Light Off',
@@ -50,7 +50,7 @@ const generateFaults = (streetlights: Streetlight[]): Fault[] => {
   return faults;
 };
 
-export const useStreetlights = () => {
+export const useSensorData = () => {
   const [streetlights, setStreetlights] = useState<Streetlight[]>([]);
   const [faults, setFaults] = useState<Fault[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);

@@ -1,4 +1,4 @@
-import { getFirebaseDatabase, ref, get, set } from '@/lib/firebase';
+import { getFirebaseDatabase, ref, get, set } from '@/lib/database';
 
 const demoStreetlights = {
   'sl-001': {
