@@ -1,21 +1,23 @@
 import React, { useState, useEffect } from 'react';
-import { startSimulator, stopSimulator } from '@/lib/simulator';
-import DashboardHeader from '@/components/dashboard/DashboardHeader';
-import StreetlightCard from '@/components/dashboard/StreetlightCard';
-import FaultsList from '@/components/dashboard/FaultsList';
-import VoltageChart from '@/components/dashboard/VoltageChart';
-import PowerChart from '@/components/dashboard/PowerChart';
-import FaultFrequencyChart from '@/components/dashboard/FaultFrequencyChart';
-import UptimeChart from '@/components/dashboard/UptimeChart';
-import { useStreetlights } from '@/hooks/useStreetlights';
-import { useWeeklySummary } from '@/hooks/useWeeklySummary';
+import { startSimulator, stopSimulator } from '@/lib/dataSimulator';
+import DashboardHeader from '@/components/monitor/DashboardHeader';
+import StreetlightCard from '@/components/monitor/StreetlightCard';
+import FaultsList from '@/components/monitor/FaultsList';
+import VoltageChart from '@/components/monitor/VoltageChart';
+import PowerChart from '@/components/monitor/PowerChart';
+import FaultFrequencyChart from '@/components/monitor/FaultFrequencyChart';
+import UptimeChart from '@/components/monitor/UptimeChart';
+import HistoryLog from '@/components/monitor/HistoryLog';
+import WeeklyAnalysis from '@/components/monitor/WeeklyAnalysis';
+import { useSensorData } from '@/hooks/useSensorData';
+import { useAnalytics } from '@/hooks/useAnalytics';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Activity, Wifi, WifiOff, LayoutDashboard, BarChart3 } from 'lucide-react';
+import { Activity, Wifi, WifiOff, LayoutDashboard, BarChart3, History } from 'lucide-react';
 
-const Dashboard: React.FC = () => {
+const Monitor: React.FC = () => {
   const [isDarkMode, setIsDarkMode] = useState(() => {
     if (typeof window !== 'undefined') {
       return localStorage.getItem('theme') === 'dark' ||
@@ -33,9 +35,9 @@ const Dashboard: React.FC = () => {
     isFirebaseConnected,
     markNotificationAsRead,
     markAllNotificationsAsRead,
-  } = useStreetlights();
+  } = useSensorData();
 
-  const { chartData } = useWeeklySummary(streetlights, faults);
+  const { chartData } = useAnalytics(streetlights, faults);
 
   // Start the demo simulator so values change every 5 seconds
   useEffect(() => {
@@ -132,6 +134,10 @@ const Dashboard: React.FC = () => {
               <BarChart3 className="h-3.5 w-3.5" />
               Reports
             </TabsTrigger>
+            <TabsTrigger value="history" className="flex-1 gap-1.5 text-xs">
+              <History className="h-3.5 w-3.5" />
+              History
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="monitoring" className="space-y-4">
@@ -186,10 +192,15 @@ const Dashboard: React.FC = () => {
             <FaultFrequencyChart data={chartData.faultData} />
             <UptimeChart data={chartData.uptimeData} />
           </TabsContent>
+
+          <TabsContent value="history" className="space-y-4">
+            <HistoryLog streetlights={streetlights} />
+            <WeeklyAnalysis streetlights={streetlights} />
+          </TabsContent>
         </Tabs>
       </main>
     </div>
   );
 };
 
-export default Dashboard;
+export default Monitor;

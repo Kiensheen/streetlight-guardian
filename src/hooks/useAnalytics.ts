@@ -34,7 +34,7 @@
    return timeline;
  };
  
- export const useWeeklySummary = (streetlights: Streetlight[], faults: Fault[]) => {
+ export const useAnalytics = (streetlights: Streetlight[], faults: Fault[]) => {
    const summaries = useMemo<WeeklySummary[]>(() => {
      const now = Date.now();
      const weekMs = 7 * 24 * 60 * 60 * 1000;

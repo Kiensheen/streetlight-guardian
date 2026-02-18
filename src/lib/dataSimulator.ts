@@ -1,4 +1,4 @@
-import { getFirebaseDatabase, ref, set } from '@/lib/firebase';
+import { getFirebaseDatabase, ref, set, push } from '@/lib/database';
 
 const statuses = ['on', 'on', 'on', 'flickering', 'dim'] as const;
 
@@ -7,10 +7,10 @@ const randomBetween = (min: number, max: number) =>
 
 const getSimulatedLight = (id: string, index: number) => {
   const statusOptions = index === 0
-    ? ['on', 'on', 'on', 'on'] // Light 1 mostly on
+    ? ['on', 'on', 'on', 'on']
     : index === 1
-    ? ['on', 'flickering', 'flickering', 'on'] // Light 2 sometimes flickering
-    : ['off', 'dim', 'on', 'off']; // Light 3 sometimes off or dim
+    ? ['on', 'flickering', 'flickering', 'on']
+    : ['off', 'dim', 'on', 'off'];
 
   const status = statusOptions[Math.floor(Math.random() * statusOptions.length)] as typeof statuses[number];
   const isOn = status === 'on';
@@ -37,7 +37,7 @@ const getSimulatedLight = (id: string, index: number) => {
 let simulatorInterval: ReturnType<typeof setInterval> | null = null;
 
 export const startSimulator = () => {
-  if (simulatorInterval) return; // already running
+  if (simulatorInterval) return;
 
   const database = getFirebaseDatabase();
   if (!database) return;
@@ -49,23 +49,34 @@ export const startSimulator = () => {
   const update = () => {
     ids.forEach((id, index) => {
       const data = getSimulatedLight(id, index);
+
+      // Overwrite current reading (live display)
       set(ref(database, `streetlights/${id}`), {
         name: names[index],
         location: locations[index],
         ...data,
       });
+
+      // Also push to history log (permanent record)
+      push(ref(database, `history/${id}`), {
+        voltage: data.voltage,
+        current: data.current,
+        power: data.power,
+        status: data.status,
+        timestamp: data.timestamp,
+      });
     });
   };
 
-  update(); // run immediately
-  simulatorInterval = setInterval(update, 5000); // then every 5 seconds
-  console.log('🔄 Streetlight simulator started — updating every 5 seconds');
+  update();
+  simulatorInterval = setInterval(update, 5000);
+  console.log('🔄 Data simulator started — updating every 5 seconds');
 };
 
 export const stopSimulator = () => {
   if (simulatorInterval) {
     clearInterval(simulatorInterval);
     simulatorInterval = null;
-    console.log('⏹ Simulator stopped');
+    console.log('⏹ Data simulator stopped');
   }
 };
