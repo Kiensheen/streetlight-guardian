@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { startSimulator, stopSimulator } from '@/lib/simulator';
 import DashboardHeader from '@/components/dashboard/DashboardHeader';
 import StreetlightCard from '@/components/dashboard/StreetlightCard';
 import FaultsList from '@/components/dashboard/FaultsList';
@@ -35,6 +36,12 @@ const Dashboard: React.FC = () => {
   } = useStreetlights();
 
   const { chartData } = useWeeklySummary(streetlights, faults);
+
+  // Start the demo simulator so values change every 5 seconds
+  useEffect(() => {
+    startSimulator();
+    return () => stopSimulator();
+  }, []);
 
   useEffect(() => {
     if (isDarkMode) {
