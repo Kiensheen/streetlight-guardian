@@ -48,7 +48,7 @@ const WeeklyAnalysis: React.FC<WeeklyAnalysisProps> = ({ streetlights }) => {
   const [rawHistory, setRawHistory] = useState<Record<string, RawReading[]>>({});
   const [isLoading, setIsLoading] = useState(true);
 
-  // Load raw history for all lights
+  // Load daily summaries for all lights for the current week
   useEffect(() => {
     const database = getFirebaseDatabase();
     if (!database) {
@@ -62,17 +62,17 @@ const WeeklyAnalysis: React.FC<WeeklyAnalysisProps> = ({ streetlights }) => {
     const allData: Record<string, RawReading[]> = {};
 
     LIGHT_IDS.forEach(id => {
-      const histRef = ref(database, `history/${id}`);
-      const unsub = onValue(histRef, (snapshot) => {
+      const summariesRef = ref(database, `daily_summaries/${id}`);
+      const unsub = onValue(summariesRef, (snapshot) => {
         if (snapshot.exists()) {
           const data = snapshot.val();
-          allData[id] = Object.entries(data).map(([key, val]: [string, any]) => ({
-            key,
-            voltage: val.voltage || 0,
-            current: val.current || 0,
-            power: val.power || 0,
-            status: val.status || 'off',
-            timestamp: val.timestamp || 0,
+          // Convert daily summaries into pseudo-readings for the analytics engine
+          allData[id] = Object.entries(data).map(([dateKey, val]: [string, any]) => ({
+            voltage: val.avgVoltage || 0,
+            current: val.avgCurrent || 0,
+            power: val.avgPower || 0,
+            status: (val.uptimePct >= 80 ? 'on' : val.uptimePct >= 50 ? 'dim' : 'off') as any,
+            timestamp: new Date(dateKey + 'T12:00:00').getTime(),
           }));
         } else {
           allData[id] = [];
