@@ -7,7 +7,7 @@ import VoltageChart from '@/components/monitor/VoltageChart';
 import PowerChart from '@/components/monitor/PowerChart';
 import FaultFrequencyChart from '@/components/monitor/FaultFrequencyChart';
 import UptimeChart from '@/components/monitor/UptimeChart';
-import HistoryLog from '@/components/monitor/HistoryLog';
+import DailySummary from '@/components/monitor/DailySummary';
 import WeeklyAnalysis from '@/components/monitor/WeeklyAnalysis';
 import { useSensorData } from '@/hooks/useSensorData';
 import { useAnalytics } from '@/hooks/useAnalytics';
@@ -194,7 +194,7 @@ const Monitor: React.FC = () => {
           </TabsContent>
 
           <TabsContent value="history" className="space-y-4">
-            <HistoryLog streetlights={streetlights} />
+            <DailySummary streetlights={streetlights} />
             <WeeklyAnalysis streetlights={streetlights} />
           </TabsContent>
         </Tabs>
