@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ChevronLeft, ChevronRight, CalendarDays, Zap, Activity, Power, AlertTriangle, Clock } from 'lucide-react';
+import { ChevronLeft, ChevronRight, CalendarDays, Zap, Activity, Power, AlertTriangle, Clock, Battery, Sun, Eye, Move } from 'lucide-react';
 import { getFirebaseDatabase, ref, onValue } from '@/lib/database';
 import { Streetlight } from '@/types/streetlight';
 import { cn } from '@/lib/utils';
@@ -18,6 +18,10 @@ interface DailySummaryData {
   faultCount: number;
   readingCount: number;
   date: string;
+  avgBatterySOH?: number;
+  avgLuminance?: number;
+  avgSolarCurrent?: number;
+  motionEvents?: number;
 }
 
 interface DailySummaryProps {
@@ -138,22 +142,51 @@ const DailySummary: React.FC<DailySummaryProps> = ({ streetlights }) => {
                 </div>
               </CardHeader>
               <CardContent className="space-y-3 pt-0">
-                {/* Voltage & Current */}
+                {/* Battery Voltage, LED Current, LED Power */}
                 <div className="grid grid-cols-3 gap-2">
                   <div className="p-2 rounded-lg bg-muted/40 text-center">
                     <Zap className="h-3 w-3 mx-auto text-warning mb-1" />
-                    <p className="text-[10px] text-muted-foreground">Avg Voltage</p>
+                    <p className="text-[10px] text-muted-foreground">Battery V</p>
                     <p className="text-sm font-bold tabular-nums">{summary.avgVoltage.toFixed(1)} V</p>
                   </div>
                   <div className="p-2 rounded-lg bg-muted/40 text-center">
                     <Activity className="h-3 w-3 mx-auto text-info mb-1" />
-                    <p className="text-[10px] text-muted-foreground">Avg Current</p>
-                    <p className="text-sm font-bold tabular-nums">{summary.avgCurrent.toFixed(3)} A</p>
+                    <p className="text-[10px] text-muted-foreground">LED Current</p>
+                    <p className="text-sm font-bold tabular-nums">{summary.avgCurrent.toFixed(2)} A</p>
                   </div>
                   <div className="p-2 rounded-lg bg-muted/40 text-center">
                     <Power className="h-3 w-3 mx-auto text-primary mb-1" />
-                    <p className="text-[10px] text-muted-foreground">Avg Power</p>
+                    <p className="text-[10px] text-muted-foreground">LED Power</p>
                     <p className="text-sm font-bold tabular-nums">{summary.avgPower.toFixed(1)} W</p>
+                  </div>
+                </div>
+
+                {/* Solar metrics */}
+                <div className="grid grid-cols-4 gap-2">
+                  <div className="p-2 rounded-lg bg-muted/40 text-center">
+                    <Battery className="h-3 w-3 mx-auto text-success mb-1" />
+                    <p className="text-[10px] text-muted-foreground">SoH</p>
+                    <p className={cn("text-sm font-bold tabular-nums",
+                      (summary.avgBatterySOH || 0) >= 80 ? 'text-success' :
+                      (summary.avgBatterySOH || 0) >= 50 ? 'text-warning' : 'text-destructive'
+                    )}>
+                      {(summary.avgBatterySOH || 0).toFixed(0)}%
+                    </p>
+                  </div>
+                  <div className="p-2 rounded-lg bg-muted/40 text-center">
+                    <Eye className="h-3 w-3 mx-auto text-primary mb-1" />
+                    <p className="text-[10px] text-muted-foreground">Lux</p>
+                    <p className="text-sm font-bold tabular-nums">{(summary.avgLuminance || 0).toFixed(0)}</p>
+                  </div>
+                  <div className="p-2 rounded-lg bg-muted/40 text-center">
+                    <Sun className="h-3 w-3 mx-auto text-warning mb-1" />
+                    <p className="text-[10px] text-muted-foreground">Solar I</p>
+                    <p className="text-sm font-bold tabular-nums">{(summary.avgSolarCurrent || 0).toFixed(1)}A</p>
+                  </div>
+                  <div className="p-2 rounded-lg bg-muted/40 text-center">
+                    <Move className="h-3 w-3 mx-auto text-muted-foreground mb-1" />
+                    <p className="text-[10px] text-muted-foreground">Motion</p>
+                    <p className="text-sm font-bold tabular-nums">{summary.motionEvents || 0}</p>
                   </div>
                 </div>
 
@@ -162,7 +195,7 @@ const DailySummary: React.FC<DailySummaryProps> = ({ streetlights }) => {
                   <div className="p-2 rounded-lg bg-muted/40">
                     <div className="flex items-center gap-1 mb-1">
                       <Power className="h-3 w-3 text-primary" />
-                      <span className="text-[10px] text-muted-foreground">Total Energy</span>
+                      <span className="text-[10px] text-muted-foreground">Night Energy</span>
                     </div>
                     <p className="text-sm font-bold">
                       {summary.totalEnergyWh.toFixed(1)}

@@ -4,8 +4,8 @@
  import { ScrollArea } from '@/components/ui/scroll-area';
  import { Badge } from '@/components/ui/badge';
  import { Notification, FaultType } from '@/types/streetlight';
- import { Bell, Check, CheckCheck, Lightbulb, Activity, AlertTriangle, Zap } from 'lucide-react';
- import { cn } from '@/lib/utils';
+import { Bell, Check, CheckCheck, Lightbulb, Activity, AlertTriangle, Zap, Battery } from 'lucide-react';
+import { cn } from '@/lib/utils';
  
  interface NotificationCenterProps {
    notifications: Notification[];
@@ -14,19 +14,22 @@
    onMarkAllAsRead: () => void;
  }
  
- const faultIcons: Record<FaultType, typeof Lightbulb> = {
-   off_when_scheduled_on: Lightbulb,
-   flickering: Activity,
-   dim_output: Lightbulb,
-   voltage_anomaly: Zap,
- };
- 
- const faultTypeLabels: Record<FaultType, string> = {
-   off_when_scheduled_on: 'Light Off',
-   flickering: 'Flickering',
-   dim_output: 'Dim Output',
-   voltage_anomaly: 'Voltage Anomaly',
- };
+
+const faultIcons: Record<FaultType, typeof Lightbulb> = {
+  off_when_scheduled_on: Lightbulb,
+  flickering: Activity,
+  dim_output: Lightbulb,
+  voltage_anomaly: Zap,
+  low_battery: Battery,
+};
+
+const faultTypeLabels: Record<FaultType, string> = {
+  off_when_scheduled_on: 'Light Off',
+  flickering: 'Flickering',
+  dim_output: 'Dim Output',
+  voltage_anomaly: 'Voltage Anomaly',
+  low_battery: 'Low Battery',
+};
  
  const NotificationCenter: React.FC<NotificationCenterProps> = ({
    notifications,

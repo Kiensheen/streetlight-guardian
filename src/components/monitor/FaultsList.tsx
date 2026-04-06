@@ -16,12 +16,13 @@
    high: { label: 'High', className: 'bg-destructive/10 text-destructive border-destructive/20' },
  };
  
- const faultTypeLabels: Record<FaultType, string> = {
-   off_when_scheduled_on: 'Light Off',
-   flickering: 'Flickering',
-   dim_output: 'Dim Output',
-   voltage_anomaly: 'Voltage Anomaly',
- };
+const faultTypeLabels: Record<FaultType, string> = {
+  off_when_scheduled_on: 'Light Off',
+  flickering: 'Flickering',
+  dim_output: 'Dim Output',
+  voltage_anomaly: 'Voltage Anomaly',
+  low_battery: 'Low Battery',
+};
  
  const FaultsList: React.FC<FaultsListProps> = ({ faults }) => {
    const activeFaults = faults.filter(f => !f.resolved);

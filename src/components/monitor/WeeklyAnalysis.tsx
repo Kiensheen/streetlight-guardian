@@ -8,7 +8,7 @@ import {
   ChartContainer, ChartTooltip, ChartTooltipContent, ChartConfig
 } from '@/components/ui/chart';
 import {
-  LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer
+  LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid
 } from 'recharts';
 import { ChevronLeft, ChevronRight, TrendingUp, Zap, Power, AlertTriangle, Clock } from 'lucide-react';
 import { getFirebaseDatabase, ref, onValue } from '@/lib/database';
@@ -48,7 +48,6 @@ const WeeklyAnalysis: React.FC<WeeklyAnalysisProps> = ({ streetlights }) => {
   const [rawHistory, setRawHistory] = useState<Record<string, RawReading[]>>({});
   const [isLoading, setIsLoading] = useState(true);
 
-  // Load daily summaries for all lights for the current week
   useEffect(() => {
     const database = getFirebaseDatabase();
     if (!database) {
@@ -66,7 +65,6 @@ const WeeklyAnalysis: React.FC<WeeklyAnalysisProps> = ({ streetlights }) => {
       const unsub = onValue(summariesRef, (snapshot) => {
         if (snapshot.exists()) {
           const data = snapshot.val();
-          // Convert daily summaries into pseudo-readings for the analytics engine
           allData[id] = Object.entries(data).map(([dateKey, val]: [string, any]) => ({
             voltage: val.avgVoltage || 0,
             current: val.avgCurrent || 0,
@@ -89,7 +87,6 @@ const WeeklyAnalysis: React.FC<WeeklyAnalysisProps> = ({ streetlights }) => {
     return () => unsubscribes.forEach(u => u());
   }, []);
 
-  // Navigate weeks
   const navigateWeek = (direction: 'prev' | 'next') => {
     const { start } = getWeekRange(currentWeekKey);
     const newDate = new Date(start);
@@ -99,7 +96,6 @@ const WeeklyAnalysis: React.FC<WeeklyAnalysisProps> = ({ streetlights }) => {
 
   const isCurrentWeek = currentWeekKey === getWeekKey(Date.now());
 
-  // Filter readings for current week
   const { start: weekStart, end: weekEnd } = getWeekRange(currentWeekKey);
 
   const weekReadings: Record<string, RawReading[]> = {};
@@ -109,18 +105,15 @@ const WeeklyAnalysis: React.FC<WeeklyAnalysisProps> = ({ streetlights }) => {
     );
   });
 
-  // Compute summaries per light
   const summaries: WeekSummary[] = LIGHT_IDS.map(id =>
     computeWeeklySummary(id, currentWeekKey, weekReadings[id])
   );
 
-  // Daily aggregates for charts (combine all lights)
   const dailyByLight: Record<string, DailyAggregate[]> = {};
   LIGHT_IDS.forEach(id => {
     dailyByLight[id] = computeDailyAggregates(weekReadings[id]);
   });
 
-  // Build chart data arrays
   const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
   const voltageChartData = days.map((day, i) => ({
     day,
@@ -139,16 +132,10 @@ const WeeklyAnalysis: React.FC<WeeklyAnalysisProps> = ({ streetlights }) => {
 
   return (
     <div className="space-y-4">
-      {/* Week Selector */}
       <Card className="border-border/50">
         <CardContent className="p-4">
           <div className="flex items-center justify-between">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8"
-              onClick={() => navigateWeek('prev')}
-            >
+            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => navigateWeek('prev')}>
               <ChevronLeft className="h-4 w-4" />
             </Button>
             <div className="text-center">
@@ -157,13 +144,7 @@ const WeeklyAnalysis: React.FC<WeeklyAnalysisProps> = ({ streetlights }) => {
                 <Badge variant="secondary" className="text-[10px] mt-0.5">Current Week</Badge>
               )}
             </div>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8"
-              onClick={() => navigateWeek('next')}
-              disabled={isCurrentWeek}
-            >
+            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => navigateWeek('next')} disabled={isCurrentWeek}>
               <ChevronRight className="h-4 w-4" />
             </Button>
           </div>
@@ -186,8 +167,7 @@ const WeeklyAnalysis: React.FC<WeeklyAnalysisProps> = ({ streetlights }) => {
         </Card>
       ) : (
         <>
-          {/* Per-light summary cards */}
-          {summaries.map((summary, i) => {
+          {summaries.map((summary) => {
             const sl = streetlights.find(s => s.id === summary.streetlightId);
             const name = sl?.name || summary.streetlightId;
             const energyKwh = summary.totalEnergyWh / 1000;
@@ -211,11 +191,10 @@ const WeeklyAnalysis: React.FC<WeeklyAnalysisProps> = ({ streetlights }) => {
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-3 pt-0">
-                  {/* Voltage stats */}
                   <div className="grid grid-cols-3 gap-2">
                     <div className="p-2 rounded-lg bg-muted/40 text-center">
                       <Zap className="h-3 w-3 mx-auto text-warning mb-1" />
-                      <p className="text-[10px] text-muted-foreground">Avg V</p>
+                      <p className="text-[10px] text-muted-foreground">Avg Batt V</p>
                       <p className="text-sm font-bold tabular-nums">{summary.avgVoltage.toFixed(1)}</p>
                     </div>
                     <div className="p-2 rounded-lg bg-muted/40 text-center">
@@ -228,12 +207,11 @@ const WeeklyAnalysis: React.FC<WeeklyAnalysisProps> = ({ streetlights }) => {
                     </div>
                   </div>
 
-                  {/* Energy & Faults */}
                   <div className="grid grid-cols-2 gap-2">
                     <div className="p-2 rounded-lg bg-muted/40">
                       <div className="flex items-center gap-1 mb-1">
                         <Power className="h-3 w-3 text-primary" />
-                        <span className="text-[10px] text-muted-foreground">Energy</span>
+                        <span className="text-[10px] text-muted-foreground">Night Energy</span>
                       </div>
                       <p className="text-sm font-bold">
                         {summary.totalEnergyWh.toFixed(1)}
@@ -253,7 +231,6 @@ const WeeklyAnalysis: React.FC<WeeklyAnalysisProps> = ({ streetlights }) => {
                     </div>
                   </div>
 
-                  {/* Uptime bar */}
                   <div>
                     <div className="flex items-center justify-between mb-1">
                       <div className="flex items-center gap-1">
@@ -268,22 +245,18 @@ const WeeklyAnalysis: React.FC<WeeklyAnalysisProps> = ({ streetlights }) => {
                         {summary.uptimePct.toFixed(1)}%
                       </span>
                     </div>
-                    <Progress
-                      value={summary.uptimePct}
-                      className="h-2"
-                    />
+                    <Progress value={summary.uptimePct} className="h-2" />
                   </div>
                 </CardContent>
               </Card>
             );
           })}
 
-          {/* Daily Average Voltage Chart */}
           <Card className="border-border/50">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-semibold flex items-center gap-2">
                 <Zap className="h-4 w-4 text-warning" />
-                Daily Average Voltage
+                Daily Avg Battery Voltage
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -291,7 +264,7 @@ const WeeklyAnalysis: React.FC<WeeklyAnalysisProps> = ({ streetlights }) => {
                 <LineChart data={voltageChartData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
                   <XAxis dataKey="day" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
-                  <YAxis domain={[0, 250]} tick={{ fontSize: 11 }} tickLine={false} axisLine={false} tickFormatter={v => `${v}V`} />
+                  <YAxis domain={[10, 15]} tick={{ fontSize: 11 }} tickLine={false} axisLine={false} tickFormatter={v => `${v}V`} />
                   <ChartTooltip content={<ChartTooltipContent />} />
                   <Line type="monotone" dataKey="sl1" stroke="var(--color-sl1)" strokeWidth={2} dot={false} name="SL-1" />
                   <Line type="monotone" dataKey="sl2" stroke="var(--color-sl2)" strokeWidth={2} dot={false} name="SL-2" />
@@ -301,12 +274,11 @@ const WeeklyAnalysis: React.FC<WeeklyAnalysisProps> = ({ streetlights }) => {
             </CardContent>
           </Card>
 
-          {/* Daily Energy Consumption Chart */}
           <Card className="border-border/50">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-semibold flex items-center gap-2">
                 <Power className="h-4 w-4 text-primary" />
-                Daily Energy Consumption (Wh)
+                Daily Night Energy (Wh)
               </CardTitle>
             </CardHeader>
             <CardContent>
