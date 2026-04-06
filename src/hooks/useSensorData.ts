@@ -8,9 +8,11 @@ const faultTypeLabels: Record<FaultType, string> = {
   flickering: 'Flickering',
   dim_output: 'Dim Output',
   voltage_anomaly: 'Voltage Anomaly',
+  low_battery: 'Low Battery',
 };
 
-const getHealthStatus = (status: LightStatus): HealthStatus => {
+const getHealthStatus = (status: LightStatus, voltage?: number): HealthStatus => {
+  if (voltage !== undefined && voltage < 11.0) return 'fault';
   switch (status) {
     case 'on': return 'healthy';
     case 'flickering': return 'warning';
@@ -26,7 +28,10 @@ const generateFaults = (streetlights: Streetlight[]): Fault[] => {
     if (sl.healthStatus === 'healthy') return;
     let faultType: FaultType = 'off_when_scheduled_on';
     let description = '';
-    if (sl.status === 'flickering') {
+    if (sl.voltage < 11.0) {
+      faultType = 'low_battery';
+      description = `${sl.name} battery critically low (${sl.voltage.toFixed(1)}V)`;
+    } else if (sl.status === 'flickering') {
       faultType = 'flickering';
       description = `${sl.name} is experiencing intermittent flickering`;
     } else if (sl.status === 'off') {
@@ -64,7 +69,6 @@ export const useSensorData = () => {
       return;
     }
 
-    // Seed demo data if database is empty
     seedFirebaseIfEmpty();
 
     const streetlightsRef = ref(database, 'streetlights');
@@ -76,11 +80,15 @@ export const useSensorData = () => {
           name: value.name || `Streetlight ${id}`,
           location: value.location || '',
           status: value.status || 'off',
-          healthStatus: getHealthStatus(value.status || 'off'),
+          healthStatus: getHealthStatus(value.status || 'off', value.voltage),
           voltage: value.voltage || 0,
           current: value.current || 0,
           power: value.power || (value.voltage * value.current) || 0,
           lastUpdated: value.timestamp || Date.now(),
+          batterySOH: value.batterySOH || 0,
+          luminance: value.luminance || 0,
+          motionDetected: value.motionDetected || false,
+          solarChargingCurrent: value.solarChargingCurrent || 0,
         }));
 
         setStreetlights(lights);

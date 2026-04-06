@@ -17,21 +17,51 @@ const getSimulatedLight = (id: string, index: number) => {
   const isDim = status === 'dim';
   const isFlickering = status === 'flickering';
 
+  // 12V LiFePO4 battery: 10.5V (empty) to 14.4V (full charge)
   const voltage = isOn || isFlickering
-    ? randomBetween(210, 235)
+    ? randomBetween(12.8, 13.6)   // Normal operating range
     : isDim
-    ? randomBetween(180, 210)
+    ? randomBetween(11.0, 12.0)   // Low battery
+    : randomBetween(10.5, 11.5);  // Very low / off
+
+  // LED current: 0-3A
+  const current = isOn
+    ? randomBetween(1.5, 2.5)
+    : isFlickering
+    ? randomBetween(0.8, 2.0)
+    : isDim
+    ? randomBetween(0.3, 0.8)
     : 0;
 
-  const current = isOn || isFlickering
-    ? randomBetween(0.75, 0.95)
-    : isDim
-    ? randomBetween(0.4, 0.6)
-    : 0;
-
+  // LED power: V * I, max ~50W
   const power = Math.round(voltage * current * 100) / 100;
 
-  return { voltage, current, power, status, timestamp: Date.now() };
+  // Battery State of Health: 60-100%
+  const batterySOH = index === 2
+    ? randomBetween(60, 75)   // Aging battery
+    : randomBetween(85, 98);  // Good battery
+
+  // BH1750 luminance: high when light is on in dark
+  const luminance = isOn
+    ? randomBetween(150, 400)  // LED on, measured at ground level
+    : isDim
+    ? randomBetween(30, 100)
+    : isFlickering
+    ? randomBetween(50, 300)
+    : randomBetween(0, 5);     // Off - ambient only
+
+  // PIR motion detection
+  const motionDetected = Math.random() < 0.3; // 30% chance
+
+  // Solar charging current (0 at night when lights are on, simulating daytime residual)
+  const solarChargingCurrent = isOn
+    ? 0  // Night time, no solar
+    : randomBetween(0.5, 4.5); // Daytime charging
+
+  return {
+    voltage, current, power, status, timestamp: Date.now(),
+    batterySOH, luminance, motionDetected, solarChargingCurrent,
+  };
 };
 
 // In-memory daily accumulators
@@ -40,9 +70,13 @@ interface DayAccumulator {
   sumVoltage: number;
   sumCurrent: number;
   sumPower: number;
+  sumBatterySOH: number;
+  sumLuminance: number;
+  sumSolarCurrent: number;
   readingCount: number;
-  onCount: number; // on, flickering, dim all count as "operational"
-  faultCount: number; // off or flickering
+  onCount: number;
+  faultCount: number;
+  motionCount: number;
 }
 
 const accumulators: Record<string, DayAccumulator> = {};
@@ -57,24 +91,40 @@ const createEmptyAccumulator = (dateKey: string): DayAccumulator => ({
   sumVoltage: 0,
   sumCurrent: 0,
   sumPower: 0,
+  sumBatterySOH: 0,
+  sumLuminance: 0,
+  sumSolarCurrent: 0,
   readingCount: 0,
   onCount: 0,
   faultCount: 0,
+  motionCount: 0,
 });
 
 const flushAccumulatorToFirebase = (id: string, acc: DayAccumulator) => {
   const database = getFirebaseDatabase();
   if (!database || acc.readingCount === 0) return;
 
+  // Realistic nightly energy: ~10-12 hours of operation at ~30W avg = 80-120 Wh
+  // Each reading is 5s interval. Scale energy to represent full night operation.
+  const avgPower = acc.sumPower / acc.readingCount;
+  // Assume 10-12 hours of nightly operation
+  const operatingHours = 10 + Math.random() * 2;
+  const uptimePct = Math.round((acc.onCount / acc.readingCount) * 10000) / 100;
+  const totalEnergyWh = Math.round(avgPower * operatingHours * (uptimePct / 100) * 100) / 100;
+
   const summary = {
     avgVoltage: Math.round((acc.sumVoltage / acc.readingCount) * 100) / 100,
     avgCurrent: Math.round((acc.sumCurrent / acc.readingCount) * 1000) / 1000,
     avgPower: Math.round((acc.sumPower / acc.readingCount) * 100) / 100,
-    totalEnergyWh: Math.round((acc.sumPower * 5 / 3600) * 100) / 100, // each reading = 5s interval
-    uptimePct: Math.round((acc.onCount / acc.readingCount) * 10000) / 100,
+    totalEnergyWh,
+    uptimePct,
     faultCount: acc.faultCount,
     readingCount: acc.readingCount,
     date: acc.dateKey,
+    avgBatterySOH: Math.round((acc.sumBatterySOH / acc.readingCount) * 100) / 100,
+    avgLuminance: Math.round((acc.sumLuminance / acc.readingCount) * 100) / 100,
+    avgSolarCurrent: Math.round((acc.sumSolarCurrent / acc.readingCount) * 1000) / 1000,
+    motionEvents: acc.motionCount,
   };
 
   set(ref(database, `daily_summaries/${id}/${acc.dateKey}`), summary);
@@ -84,7 +134,6 @@ const updateAccumulator = (id: string, data: ReturnType<typeof getSimulatedLight
   const dateKey = getDateKey(data.timestamp);
   const key = `${id}_${dateKey}`;
 
-  // If day changed, flush old accumulator
   if (accumulators[key]?.dateKey && accumulators[key].dateKey !== dateKey) {
     flushAccumulatorToFirebase(id, accumulators[key]);
     delete accumulators[key];
@@ -98,6 +147,9 @@ const updateAccumulator = (id: string, data: ReturnType<typeof getSimulatedLight
   acc.sumVoltage += data.voltage;
   acc.sumCurrent += data.current;
   acc.sumPower += data.power;
+  acc.sumBatterySOH += data.batterySOH;
+  acc.sumLuminance += data.luminance;
+  acc.sumSolarCurrent += data.solarChargingCurrent;
   acc.readingCount += 1;
 
   if (data.status === 'on' || data.status === 'flickering' || data.status === 'dim') {
@@ -107,8 +159,10 @@ const updateAccumulator = (id: string, data: ReturnType<typeof getSimulatedLight
   if (statusStr === 'off' || statusStr === 'flickering') {
     acc.faultCount += 1;
   }
+  if (data.motionDetected) {
+    acc.motionCount += 1;
+  }
 
-  // Flush current day summary to Firebase every 10 readings (~50s)
   if (acc.readingCount % 10 === 0) {
     flushAccumulatorToFirebase(id, acc);
   }
@@ -130,14 +184,12 @@ export const startSimulator = () => {
     ids.forEach((id, index) => {
       const data = getSimulatedLight(id, index);
 
-      // Overwrite current reading (live display)
       set(ref(database, `streetlights/${id}`), {
         name: names[index],
         location: locations[index],
         ...data,
       });
 
-      // Update in-memory accumulator & periodically flush daily summary
       updateAccumulator(id, data);
     });
   };
@@ -152,7 +204,6 @@ export const stopSimulator = () => {
     clearInterval(simulatorInterval);
     simulatorInterval = null;
 
-    // Flush all accumulators on stop
     Object.entries(accumulators).forEach(([key, acc]) => {
       const id = key.split('_')[0];
       flushAccumulatorToFirebase(id, acc);
