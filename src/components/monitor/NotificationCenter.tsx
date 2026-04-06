@@ -4,8 +4,8 @@
  import { ScrollArea } from '@/components/ui/scroll-area';
  import { Badge } from '@/components/ui/badge';
  import { Notification, FaultType } from '@/types/streetlight';
- import { Bell, Check, CheckCheck, Lightbulb, Activity, AlertTriangle, Zap } from 'lucide-react';
- import { cn } from '@/lib/utils';
+import { Bell, Check, CheckCheck, Lightbulb, Activity, AlertTriangle, Zap, Battery } from 'lucide-react';
+import { cn } from '@/lib/utils';
  
  interface NotificationCenterProps {
    notifications: Notification[];
