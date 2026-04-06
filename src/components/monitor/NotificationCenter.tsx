@@ -14,7 +14,6 @@ import { cn } from '@/lib/utils';
    onMarkAllAsRead: () => void;
  }
  
-import { Battery } from 'lucide-react';
 
 const faultIcons: Record<FaultType, typeof Lightbulb> = {
   off_when_scheduled_on: Lightbulb,
