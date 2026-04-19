@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { startSimulator, stopSimulator } from '@/lib/dataSimulator';
 import DashboardHeader from '@/components/monitor/DashboardHeader';
 import StreetlightCard from '@/components/monitor/StreetlightCard';
 import FaultsList from '@/components/monitor/FaultsList';
@@ -38,12 +37,6 @@ const Monitor: React.FC = () => {
   } = useSensorData();
 
   const { chartData } = useAnalytics(streetlights, faults);
-
-  // Start the demo simulator so values change every 5 seconds
-  useEffect(() => {
-    startSimulator();
-    return () => stopSimulator();
-  }, []);
 
   useEffect(() => {
     if (isDarkMode) {
