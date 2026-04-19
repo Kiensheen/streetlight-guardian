@@ -36,17 +36,21 @@ export const ensureFirebaseAuth = (): Promise<void> => {
   initializeFirebase();
   authPromise = new Promise<void>((resolve, reject) => {
     if (!auth) return reject(new Error('Auth not initialized'));
-    onAuthStateChanged(auth, (user) => {
+    const unsub = onAuthStateChanged(auth, (user) => {
       if (user) {
         console.log('🔐 Firebase auth ready:', user.uid);
+        unsub();
         resolve();
       }
     });
     signInAnonymously(auth).catch((err) => {
       console.error('Anonymous sign-in failed:', err);
+      unsub();
       reject(err);
     });
   });
+  // Swallow at module level so it can't crash the React render
+  authPromise.catch(() => {});
   return authPromise;
 };
 
