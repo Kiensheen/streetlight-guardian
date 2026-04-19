@@ -123,11 +123,11 @@ export const useAnalytics = (streetlights: Streetlight[], faults: Fault[]) => {
     });
     
     const faultData = [
-      { type: 'Light Off', count: faults.filter(f => f.type === 'off_when_scheduled_on').length || 1 },
-      { type: 'Flickering', count: faults.filter(f => f.type === 'flickering').length || 1 },
-      { type: 'Dim Output', count: faults.filter(f => f.type === 'dim_output').length || 0 },
-      { type: 'Low Battery', count: faults.filter(f => f.type === 'low_battery').length || 0 },
-      { type: 'Voltage', count: faults.filter(f => f.type === 'voltage_anomaly').length || 0 },
+      { type: 'Light Off', count: faults.filter(f => f.type === 'off_when_scheduled_on').length },
+      { type: 'Flickering', count: faults.filter(f => f.type === 'flickering').length },
+      { type: 'Dim Output', count: faults.filter(f => f.type === 'dim_output').length },
+      { type: 'Low Battery', count: faults.filter(f => f.type === 'low_battery').length },
+      { type: 'Voltage', count: faults.filter(f => f.type === 'voltage_anomaly').length },
     ];
     
     const uptimeData = streetlights.map(sl => {
