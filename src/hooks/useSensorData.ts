@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Streetlight, Fault, Notification, LightStatus, HealthStatus, FaultType } from '@/types/streetlight';
-import { getFirebaseDatabase, ref, onValue } from '@/lib/database';
-import { seedFirebaseIfEmpty } from '@/lib/databaseSeed';
+import { getFirebaseDatabase, ref, onValue, ensureFirebaseAuth } from '@/lib/database';
 
 const faultTypeLabels: Record<FaultType, string> = {
   off_when_scheduled_on: 'Light Off',
@@ -11,11 +10,32 @@ const faultTypeLabels: Record<FaultType, string> = {
   low_battery: 'Low Battery',
 };
 
-const getHealthStatus = (status: LightStatus, voltage?: number): HealthStatus => {
-  if (voltage !== undefined && voltage < 11.0) return 'fault';
+// ESP32 nodes — path: /lights/{nodeId}/data
+const NODE_CONFIG: { nodeId: string; name: string; location: string }[] = [
+  { nodeId: 'node1', name: 'Streetlight 1', location: 'Main Street North' },
+  { nodeId: 'node2', name: 'Streetlight 2', location: 'Main Street Center' },
+  { nodeId: 'node3', name: 'Streetlight 3', location: 'Main Street South' },
+];
+
+// Derive status from brightness + voltage + LED current
+const deriveStatus = (br: number, current: number, voltage: number): LightStatus => {
+  if (br <= 5 || current < 0.05) return 'off';
+  if (br < 80) return 'dim';
+  if (voltage < 11.0) return 'dim';
+  return 'on';
+};
+
+// Estimate battery State of Health from voltage (12V LiFePO4: 10.5V empty → 14.4V full)
+const estimateBatterySOH = (voltage: number): number => {
+  const pct = ((voltage - 10.5) / (14.4 - 10.5)) * 100;
+  return Math.max(0, Math.min(100, Math.round(pct)));
+};
+
+const getHealthStatus = (status: LightStatus, voltage: number): HealthStatus => {
+  if (voltage < 11.0) return 'fault';
   switch (status) {
     case 'on': return 'healthy';
-    case 'flickering': return 'warning';
+    case 'flickering':
     case 'dim': return 'warning';
     case 'off': return 'fault';
     default: return 'healthy';
@@ -56,7 +76,7 @@ const generateFaults = (streetlights: Streetlight[]): Fault[] => {
 };
 
 export const useSensorData = () => {
-  const [streetlights, setStreetlights] = useState<Streetlight[]>([]);
+  const [readings, setReadings] = useState<Record<string, Streetlight>>({});
   const [faults, setFaults] = useState<Fault[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -69,51 +89,94 @@ export const useSensorData = () => {
       return;
     }
 
-    seedFirebaseIfEmpty();
+    const unsubscribers: Array<() => void> = [];
+    let cancelled = false;
 
-    const streetlightsRef = ref(database, 'streetlights');
-    const unsubscribe = onValue(streetlightsRef, (snapshot) => {
-      if (snapshot.exists()) {
-        const data = snapshot.val();
-        const lights: Streetlight[] = Object.entries(data).map(([id, value]: [string, any]) => ({
-          id,
-          name: value.name || `Streetlight ${id}`,
-          location: value.location || '',
-          status: value.status || 'off',
-          healthStatus: getHealthStatus(value.status || 'off', value.voltage),
-          voltage: value.voltage || 0,
-          current: value.current || 0,
-          power: value.power || (value.voltage * value.current) || 0,
-          lastUpdated: value.timestamp || Date.now(),
-          batterySOH: value.batterySOH || 0,
-          luminance: value.luminance || 0,
-          motionDetected: value.motionDetected || false,
-          solarChargingCurrent: value.solarChargingCurrent || 0,
-        }));
+    ensureFirebaseAuth()
+      .then(() => {
+        if (cancelled) return;
 
-        setStreetlights(lights);
-        const newFaults = generateFaults(lights);
-        setFaults(newFaults);
-        setNotifications(newFaults.map(fault => ({
-          id: `notif-${fault.id}`,
-          faultId: fault.id,
-          streetlightId: fault.streetlightId,
-          streetlightName: fault.streetlightName,
-          faultType: fault.type,
-          message: `${faultTypeLabels[fault.type]} detected on ${fault.streetlightName}`,
-          timestamp: fault.detectedAt,
-          read: false,
-        })));
-        setIsFirebaseConnected(true);
-      }
-      setIsLoading(false);
-    }, (error) => {
-      console.error('Firebase connection error:', error);
-      setIsLoading(false);
-    });
+        NODE_CONFIG.forEach(({ nodeId, name, location }) => {
+          const dataRef = ref(database, `lights/${nodeId}/data`);
+          const unsub = onValue(
+            dataRef,
+            (snapshot) => {
+              if (!snapshot.exists()) {
+                setIsLoading(false);
+                return;
+              }
+              const v = snapshot.val() as {
+                ldr?: number; v?: number; c?: number; p?: number;
+                lux?: number; br?: number; ts?: number;
+              };
 
-    return () => unsubscribe();
+              const voltage = Number(v.v ?? 0);
+              const currentA = Number(v.c ?? 0) / 1000; // mA → A
+              const powerW = Number(v.p ?? 0) / 1000;   // mW → W
+              const lux = Number(v.lux ?? 0);
+              const br = Number(v.br ?? 0);
+              const tsMs = v.ts ? Number(v.ts) * 1000 : Date.now();
+
+              const status = deriveStatus(br, currentA, voltage);
+              const healthStatus = getHealthStatus(status, voltage);
+
+              const light: Streetlight = {
+                id: nodeId,
+                name,
+                location,
+                status,
+                healthStatus,
+                voltage,
+                current: currentA,
+                power: powerW,
+                lastUpdated: tsMs,
+                batterySOH: estimateBatterySOH(voltage),
+                luminance: lux,
+                motionDetected: false, // not provided by ESP32
+                solarChargingCurrent: 0, // not provided by ESP32
+              };
+
+              setReadings(prev => ({ ...prev, [nodeId]: light }));
+              setIsFirebaseConnected(true);
+              setIsLoading(false);
+            },
+            (error) => {
+              console.error(`Firebase error for ${nodeId}:`, error);
+              setIsLoading(false);
+            }
+          );
+          unsubscribers.push(unsub);
+        });
+      })
+      .catch((err) => {
+        console.error('Auth failed, cannot subscribe:', err);
+        setIsLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+      unsubscribers.forEach(u => u());
+    };
   }, []);
+
+  // Recompute faults/notifications whenever readings change
+  useEffect(() => {
+    const lights = NODE_CONFIG
+      .map(c => readings[c.nodeId])
+      .filter((l): l is Streetlight => Boolean(l));
+    const newFaults = generateFaults(lights);
+    setFaults(newFaults);
+    setNotifications(newFaults.map(fault => ({
+      id: `notif-${fault.id}`,
+      faultId: fault.id,
+      streetlightId: fault.streetlightId,
+      streetlightName: fault.streetlightName,
+      faultType: fault.type,
+      message: `${faultTypeLabels[fault.type]} detected on ${fault.streetlightName}`,
+      timestamp: fault.detectedAt,
+      read: false,
+    })));
+  }, [readings]);
 
   const markNotificationAsRead = useCallback((notificationId: string) => {
     setNotifications(prev =>
@@ -124,6 +187,10 @@ export const useSensorData = () => {
   const markAllNotificationsAsRead = useCallback(() => {
     setNotifications(prev => prev.map(n => ({ ...n, read: true })));
   }, []);
+
+  const streetlights = NODE_CONFIG
+    .map(c => readings[c.nodeId])
+    .filter((l): l is Streetlight => Boolean(l));
 
   const unreadCount = notifications.filter(n => !n.read).length;
 
