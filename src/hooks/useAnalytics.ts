@@ -99,36 +99,35 @@ export const useAnalytics = (streetlights: Streetlight[], faults: Fault[]) => {
 
   const chartData = useMemo(() => {
     const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    
-    // Battery voltage trend (10.5-14.4V range)
-    const voltageData = days.map((day) => {
+
+    // Until ESP32 history is stored in Firebase, show today's live reading
+    // on the last day and zeros on prior days (no fake random values).
+    const voltageData = days.map((day, dayIdx) => {
       const data: Record<string, string | number> = { day };
       streetlights.forEach((sl, idx) => {
-        const baseVoltage = sl.status === 'off' ? 10.8 : 12.5 + Math.random() * 1.5;
-        data[`sl${idx + 1}`] = Number(baseVoltage.toFixed(1));
+        data[`sl${idx + 1}`] = dayIdx === days.length - 1 ? Number(sl.voltage.toFixed(2)) : 0;
       });
       return data;
     });
-    
-    // LED power consumption (0-50W)
-    const powerData = days.map((day) => {
+
+    const powerData = days.map((day, dayIdx) => {
       const data: Record<string, string | number> = { day };
       let total = 0;
       streetlights.forEach((sl, idx) => {
-        const power = sl.status === 'off' ? 0 : 15 + Math.random() * 30;
-        data[`sl${idx + 1}`] = Number(power.toFixed(1));
-        total += power;
+        const p = dayIdx === days.length - 1 ? sl.power : 0;
+        data[`sl${idx + 1}`] = Number(p.toFixed(2));
+        total += p;
       });
-      data.total = Number(total.toFixed(0));
+      data.total = Number(total.toFixed(2));
       return data;
     });
     
     const faultData = [
-      { type: 'Light Off', count: faults.filter(f => f.type === 'off_when_scheduled_on').length || 1 },
-      { type: 'Flickering', count: faults.filter(f => f.type === 'flickering').length || 1 },
-      { type: 'Dim Output', count: faults.filter(f => f.type === 'dim_output').length || 0 },
-      { type: 'Low Battery', count: faults.filter(f => f.type === 'low_battery').length || 0 },
-      { type: 'Voltage', count: faults.filter(f => f.type === 'voltage_anomaly').length || 0 },
+      { type: 'Light Off', count: faults.filter(f => f.type === 'off_when_scheduled_on').length },
+      { type: 'Flickering', count: faults.filter(f => f.type === 'flickering').length },
+      { type: 'Dim Output', count: faults.filter(f => f.type === 'dim_output').length },
+      { type: 'Low Battery', count: faults.filter(f => f.type === 'low_battery').length },
+      { type: 'Voltage', count: faults.filter(f => f.type === 'voltage_anomaly').length },
     ];
     
     const uptimeData = streetlights.map(sl => {
