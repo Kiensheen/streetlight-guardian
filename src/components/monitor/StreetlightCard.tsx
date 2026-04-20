@@ -2,7 +2,7 @@ import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Streetlight, LightStatus, HealthStatus } from '@/types/streetlight';
-import { Lightbulb, Zap, Activity, Power, MapPin, Battery, Sun, Eye, Move } from 'lucide-react';
+import { Lightbulb, Zap, Activity, Power, MapPin, Battery, Eye, Move, Moon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface StreetlightCardProps {
@@ -126,12 +126,14 @@ const StreetlightCard: React.FC<StreetlightCardProps> = ({ streetlight }) => {
           
           <div className="space-y-1 text-center">
             <div className="flex items-center justify-center gap-1 text-muted-foreground">
-              <Sun className="h-3 w-3" />
+              <Moon className="h-3 w-3" />
             </div>
             <p className="text-sm font-bold tabular-nums">
-              {streetlight.solarChargingCurrent.toFixed(1)}A
+              {streetlight.ldr.toFixed(0)}
             </p>
-            <p className="text-[10px] text-muted-foreground">Solar</p>
+            <p className="text-[10px] text-muted-foreground">
+              {streetlight.ldr > 1000 ? 'Night' : streetlight.ldr < 500 ? 'Day' : 'Dusk'}
+            </p>
           </div>
           
           <div className="space-y-1 text-center">
