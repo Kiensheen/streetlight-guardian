@@ -14,7 +14,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Activity, Wifi, WifiOff, LayoutDashboard, BarChart3, History } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
+import { Activity, Wifi, WifiOff, LayoutDashboard, BarChart3, History, RefreshCw } from 'lucide-react';
 
 const Monitor: React.FC = () => {
   const [isDarkMode, setIsDarkMode] = useState(() => {
@@ -34,7 +36,14 @@ const Monitor: React.FC = () => {
     isFirebaseConnected,
     markNotificationAsRead,
     markAllNotificationsAsRead,
+    refresh,
   } = useSensorData();
+
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    try { await refresh(); } finally { setTimeout(() => setIsRefreshing(false), 600); }
+  };
 
   const { chartData } = useAnalytics(streetlights, faults);
 
@@ -114,6 +123,17 @@ const Monitor: React.FC = () => {
                 <span className="text-xs font-medium">{faultSL}</span>
               </div>
             )}
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="h-7 px-2 gap-1 text-xs"
+              onClick={handleRefresh}
+              disabled={isRefreshing}
+            >
+              <RefreshCw className={cn("h-3 w-3", isRefreshing && "animate-spin")} />
+              Refresh
+            </Button>
           </div>
         </div>
 
@@ -134,25 +154,11 @@ const Monitor: React.FC = () => {
           </TabsList>
 
           <TabsContent value="monitoring" className="space-y-4">
-            {/* Streetlight Cards - stacked for mobile */}
+            {/* Always render all 3 streetlights */}
             <div className="space-y-3">
-              {streetlights.length === 0 ? (
-                <Card className="border-border/50">
-                  <CardContent className="p-6 text-center">
-                    <WifiOff className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
-                    <p className="text-sm font-medium">
-                      {isFirebaseConnected ? 'Waiting for sensor data...' : 'Connection error - check Firebase'}
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Reading from /lights/node1/sensors
-                    </p>
-                  </CardContent>
-                </Card>
-              ) : (
-                streetlights.map(streetlight => (
-                  <StreetlightCard key={streetlight.id} streetlight={streetlight} />
-                ))
-              )}
+              {streetlights.map(streetlight => (
+                <StreetlightCard key={streetlight.id} streetlight={streetlight} />
+              ))}
             </div>
             
             {/* Active Faults */}
