@@ -30,6 +30,8 @@ export interface Streetlight {
   motionDetected: boolean;      // Microwave motion sensor
   solarChargingCurrent: number; // Solar panel charging current (A)
   ldr: number;                  // Raw LDR value (0-4095)
+  hasData?: boolean;            // True if real data was received from Firebase
+  online?: boolean;             // True if last update is within freshness window
 }
 
 export interface Fault {

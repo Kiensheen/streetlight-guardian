@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Streetlight, Fault, Notification, LightStatus, HealthStatus, FaultType } from '@/types/streetlight';
-import { getFirebaseDatabase, ref, onValue, ensureFirebaseAuth } from '@/lib/database';
+import { getFirebaseDatabase, ref, onValue, get, ensureFirebaseAuth } from '@/lib/database';
 
 const faultTypeLabels: Record<FaultType, string> = {
   off_when_scheduled_on: 'Light Off',
@@ -10,10 +10,16 @@ const faultTypeLabels: Record<FaultType, string> = {
   low_battery: 'Low Battery',
 };
 
-// ESP32 sensor — path: /sensors (single device)
+// Three streetlights. Node1 reads from /sensors (current ESP32 path).
+// Node2 and Node3 read from their own paths and will simply stay empty until data arrives.
 const NODE_CONFIG: { nodeId: string; path: string; name: string; location: string }[] = [
   { nodeId: 'node1', path: 'sensors', name: 'Streetlight 1', location: 'Main Street North' },
+  { nodeId: 'node2', path: 'lights/node2/sensors', name: 'Streetlight 2', location: 'Main Street Center' },
+  { nodeId: 'node3', path: 'lights/node3/sensors', name: 'Streetlight 3', location: 'Main Street South' },
 ];
+
+// Consider a node "Online" only if its last update is within this window.
+const ONLINE_WINDOW_MS = 60 * 1000; // 60 seconds
 
 const deriveStatus = (currentMa: number, voltage: number): LightStatus => {
   if (Math.abs(currentMa) < 50) return 'off';
@@ -41,6 +47,7 @@ const getHealthStatus = (status: LightStatus, voltage: number): HealthStatus => 
 const generateFaults = (streetlights: Streetlight[]): Fault[] => {
   const faults: Fault[] = [];
   streetlights.forEach(sl => {
+    if (!sl.hasData) return;
     if (sl.healthStatus === 'healthy') return;
     let faultType: FaultType = 'off_when_scheduled_on';
     let description = '';
@@ -68,12 +75,71 @@ const generateFaults = (streetlights: Streetlight[]): Fault[] => {
   return faults;
 };
 
+const mapSnapshotToLight = (
+  v: { voltage?: number; current?: number; power?: number; lux?: number; ldr?: number; microwave?: number; ts?: number },
+  cfg: { nodeId: string; name: string; location: string }
+): Streetlight => {
+  const voltage = Number(v.voltage ?? 0);
+  const currentMa = Number(v.current ?? 0);
+  const powerMw = Number(v.power ?? 0);
+  const lux = Number(v.lux ?? 0);
+  const ldr = Number(v.ldr ?? 0);
+  const motion = Number(v.microwave ?? 0) === 1;
+  const tsMs = v.ts ? Number(v.ts) * 1000 : Date.now();
+
+  const status = deriveStatus(currentMa, voltage);
+  const healthStatus = getHealthStatus(status, voltage);
+
+  return {
+    id: cfg.nodeId,
+    name: cfg.name,
+    location: cfg.location,
+    status,
+    healthStatus,
+    voltage,
+    current: currentMa,
+    power: powerMw,
+    lastUpdated: tsMs,
+    batterySOH: estimateBatterySOH(voltage),
+    luminance: lux,
+    motionDetected: motion,
+    solarChargingCurrent: 0,
+    ldr,
+    hasData: true,
+  };
+};
+
+const emptyLight = (cfg: { nodeId: string; name: string; location: string }): Streetlight => ({
+  id: cfg.nodeId,
+  name: cfg.name,
+  location: cfg.location,
+  status: 'off',
+  healthStatus: 'healthy',
+  voltage: 0,
+  current: 0,
+  power: 0,
+  lastUpdated: 0,
+  batterySOH: 0,
+  luminance: 0,
+  motionDetected: false,
+  solarChargingCurrent: 0,
+  ldr: 0,
+  hasData: false,
+});
+
 export const useSensorData = () => {
   const [readings, setReadings] = useState<Record<string, Streetlight>>({});
   const [faults, setFaults] = useState<Fault[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isFirebaseConnected, setIsFirebaseConnected] = useState(false);
+  const [now, setNow] = useState(Date.now());
+
+  // Tick every 10s so Online/Offline freshness re-evaluates
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 10000);
+    return () => clearInterval(id);
+  }, []);
 
   useEffect(() => {
     const database = getFirebaseDatabase();
@@ -88,9 +154,10 @@ export const useSensorData = () => {
     ensureFirebaseAuth()
       .then(() => {
         if (cancelled) return;
+        setIsFirebaseConnected(true);
 
-        NODE_CONFIG.forEach(({ nodeId, path, name, location }) => {
-          const dataRef = ref(database, path);
+        NODE_CONFIG.forEach((cfg) => {
+          const dataRef = ref(database, cfg.path);
           const unsub = onValue(
             dataRef,
             (snapshot) => {
@@ -98,51 +165,20 @@ export const useSensorData = () => {
                 setIsLoading(false);
                 return;
               }
-              const v = snapshot.val() as {
-                voltage?: number; current?: number; power?: number;
-                lux?: number; ldr?: number; microwave?: number; ts?: number;
-              };
-
-              // RAW values exactly as stored in Firebase — no conversion.
-              const voltage = Number(v.voltage ?? 0);
-              const currentMa = Number(v.current ?? 0); // mA (raw)
-              const powerMw = Number(v.power ?? 0);     // mW (raw)
-              const lux = Number(v.lux ?? 0);
-              const ldr = Number(v.ldr ?? 0);
-              const motion = Number(v.microwave ?? 0) === 1;
-              const tsMs = v.ts ? Number(v.ts) * 1000 : Date.now();
-
-              const status = deriveStatus(currentMa, voltage);
-              const healthStatus = getHealthStatus(status, voltage);
-
-              const light: Streetlight = {
-                id: nodeId,
-                name,
-                location,
-                status,
-                healthStatus,
-                voltage,         // V (raw)
-                current: currentMa, // mA (raw, may be negative)
-                power: powerMw,    // mW (raw)
-                lastUpdated: tsMs,
-                batterySOH: estimateBatterySOH(voltage),
-                luminance: lux,
-                motionDetected: motion,
-                solarChargingCurrent: 0,
-                ldr,
-              };
-
-              setReadings(prev => ({ ...prev, [nodeId]: light }));
-              setIsFirebaseConnected(true);
+              const light = mapSnapshotToLight(snapshot.val(), cfg);
+              setReadings(prev => ({ ...prev, [cfg.nodeId]: light }));
               setIsLoading(false);
             },
             (error) => {
-              console.error(`Firebase error for ${nodeId}:`, error);
+              console.error(`Firebase error for ${cfg.nodeId}:`, error);
               setIsLoading(false);
             }
           );
           unsubscribers.push(unsub);
         });
+
+        // In case no node ever fires (all empty), stop the loading state quickly
+        setTimeout(() => setIsLoading(false), 1500);
       })
       .catch((err) => {
         console.error('Auth failed, cannot subscribe:', err);
@@ -155,11 +191,34 @@ export const useSensorData = () => {
     };
   }, []);
 
+  const refresh = useCallback(async () => {
+    const database = getFirebaseDatabase();
+    if (!database) return;
+    try {
+      await ensureFirebaseAuth();
+      await Promise.all(NODE_CONFIG.map(async (cfg) => {
+        const snap = await get(ref(database, cfg.path));
+        if (snap.exists()) {
+          const light = mapSnapshotToLight(snap.val(), cfg);
+          setReadings(prev => ({ ...prev, [cfg.nodeId]: light }));
+        }
+      }));
+      setNow(Date.now());
+    } catch (e) {
+      console.error('Manual refresh failed:', e);
+    }
+  }, []);
+
+  // Build the always-3 list, marking online based on freshness
+  const streetlights: Streetlight[] = NODE_CONFIG.map(cfg => {
+    const r = readings[cfg.nodeId];
+    if (!r) return emptyLight(cfg);
+    const online = r.lastUpdated > 0 && (now - r.lastUpdated) < ONLINE_WINDOW_MS;
+    return { ...r, online };
+  });
+
   useEffect(() => {
-    const lights = NODE_CONFIG
-      .map(c => readings[c.nodeId])
-      .filter((l): l is Streetlight => Boolean(l));
-    const newFaults = generateFaults(lights);
+    const newFaults = generateFaults(streetlights);
     setFaults(newFaults);
     setNotifications(newFaults.map(fault => ({
       id: `notif-${fault.id}`,
@@ -183,10 +242,6 @@ export const useSensorData = () => {
     setNotifications(prev => prev.map(n => ({ ...n, read: true })));
   }, []);
 
-  const streetlights = NODE_CONFIG
-    .map(c => readings[c.nodeId])
-    .filter((l): l is Streetlight => Boolean(l));
-
   const unreadCount = notifications.filter(n => !n.read).length;
 
   return {
@@ -198,5 +253,6 @@ export const useSensorData = () => {
     isFirebaseConnected,
     markNotificationAsRead,
     markAllNotificationsAsRead,
+    refresh,
   };
 };
