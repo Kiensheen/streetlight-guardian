@@ -10,10 +10,9 @@ const faultTypeLabels: Record<FaultType, string> = {
   low_battery: 'Low Battery',
 };
 
-// ESP32 nodes — path: /lights/{nodeId}/sensors
-// Only node1 is currently online. Add more here when hardware is deployed.
-const NODE_CONFIG: { nodeId: string; name: string; location: string }[] = [
-  { nodeId: 'node1', name: 'Streetlight 1', location: 'Main Street North' },
+// ESP32 sensor — path: /sensors (single device)
+const NODE_CONFIG: { nodeId: string; path: string; name: string; location: string }[] = [
+  { nodeId: 'node1', path: 'sensors', name: 'Streetlight 1', location: 'Main Street North' },
 ];
 
 const deriveStatus = (currentMa: number, voltage: number): LightStatus => {
@@ -90,8 +89,8 @@ export const useSensorData = () => {
       .then(() => {
         if (cancelled) return;
 
-        NODE_CONFIG.forEach(({ nodeId, name, location }) => {
-          const dataRef = ref(database, `lights/${nodeId}/sensors`);
+        NODE_CONFIG.forEach(({ nodeId, path, name, location }) => {
+          const dataRef = ref(database, path);
           const unsub = onValue(
             dataRef,
             (snapshot) => {
