@@ -2,7 +2,7 @@ import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Streetlight, LightStatus, HealthStatus } from '@/types/streetlight';
-import { Lightbulb, Zap, Activity, Power, MapPin, Battery, Eye, Move, Moon } from 'lucide-react';
+import { Lightbulb, Zap, Activity, Power, MapPin, Battery, Eye, Move, Moon, Wifi, WifiOff } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface StreetlightCardProps {
@@ -22,32 +22,46 @@ const healthConfig: Record<HealthStatus, { color: string; bgColor: string; ringC
   fault: { color: 'text-destructive', bgColor: 'bg-destructive/10', ringColor: 'ring-destructive/20' },
 };
 
+const DASH = '--';
+
 const StreetlightCard: React.FC<StreetlightCardProps> = ({ streetlight }) => {
+  const hasData = streetlight.hasData ?? false;
+  const isOnline = streetlight.online ?? false;
+
+  // When offline/no-data, neutralize visual health to muted instead of "fault"
+  const effectiveHealth: HealthStatus = hasData ? streetlight.healthStatus : 'healthy';
   const status = statusConfig[streetlight.status];
-  const health = healthConfig[streetlight.healthStatus];
+  const health = healthConfig[effectiveHealth];
   const StatusIcon = status.icon;
 
-  const batteryColor = streetlight.batterySOH >= 80 ? 'text-success' :
-    streetlight.batterySOH >= 50 ? 'text-warning' : 'text-destructive';
+  const batteryColor = !hasData
+    ? 'text-muted-foreground'
+    : streetlight.batterySOH >= 80 ? 'text-success'
+    : streetlight.batterySOH >= 50 ? 'text-warning'
+    : 'text-destructive';
+
+  const fmt = (n: number, digits = 1) => hasData ? n.toFixed(digits) : DASH;
 
   return (
     <Card className={cn(
       "relative overflow-hidden transition-all duration-300 hover:shadow-lg",
       "border-border/50",
-      health.ringColor,
-      "ring-2 ring-inset"
+      hasData ? health.ringColor : "ring-border/30",
+      "ring-2 ring-inset",
+      !hasData && "opacity-90"
     )}>
       <div className={cn("absolute top-0 left-0 right-0 h-1", {
-        'bg-success': streetlight.healthStatus === 'healthy',
-        'bg-warning': streetlight.healthStatus === 'warning',
-        'bg-destructive': streetlight.healthStatus === 'fault',
+        'bg-success': hasData && effectiveHealth === 'healthy',
+        'bg-warning': hasData && effectiveHealth === 'warning',
+        'bg-destructive': hasData && effectiveHealth === 'fault',
+        'bg-muted': !hasData,
       })} />
-      
+
       <CardHeader className="pb-2">
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-3">
-            <div className={cn("p-2.5 rounded-xl", health.bgColor)}>
-              <StatusIcon className={cn("h-6 w-6", health.color)} />
+            <div className={cn("p-2.5 rounded-xl", hasData ? health.bgColor : "bg-muted")}>
+              <StatusIcon className={cn("h-6 w-6", hasData ? health.color : "text-muted-foreground")} />
             </div>
             <div>
               <CardTitle className="text-lg font-semibold">{streetlight.name}</CardTitle>
@@ -59,14 +73,31 @@ const StreetlightCard: React.FC<StreetlightCardProps> = ({ streetlight }) => {
               )}
             </div>
           </div>
-          <Badge className={cn(status.className, "font-medium")}>
-            {status.label}
+          <Badge
+            variant="outline"
+            className={cn(
+              "font-medium gap-1",
+              isOnline
+                ? "bg-success/10 text-success border-success/30"
+                : "bg-muted text-muted-foreground border-border"
+            )}
+          >
+            {isOnline ? <Wifi className="h-3 w-3" /> : <WifiOff className="h-3 w-3" />}
+            {isOnline ? 'Online' : 'Offline'}
           </Badge>
         </div>
       </CardHeader>
-      
+
       <CardContent className="space-y-4">
-        {/* Primary metrics: Battery Voltage, LED Current, LED Power */}
+        {!hasData && (
+          <div className="rounded-lg border border-dashed border-border bg-muted/30 px-3 py-2 text-center">
+            <p className="text-xs font-medium text-muted-foreground">
+              Waiting for first transmission
+            </p>
+          </div>
+        )}
+
+        {/* Primary metrics */}
         <div className="grid grid-cols-3 gap-3">
           <div className="space-y-1">
             <div className="flex items-center gap-1.5 text-muted-foreground">
@@ -74,82 +105,84 @@ const StreetlightCard: React.FC<StreetlightCardProps> = ({ streetlight }) => {
               <span className="text-xs font-medium uppercase tracking-wide">Batt V</span>
             </div>
             <p className="text-xl font-bold tabular-nums">
-              {streetlight.voltage.toFixed(1)}
+              {fmt(streetlight.voltage, 2)}
               <span className="text-sm font-normal text-muted-foreground ml-1">V</span>
             </p>
           </div>
-          
+
           <div className="space-y-1">
             <div className="flex items-center gap-1.5 text-muted-foreground">
               <Activity className="h-3.5 w-3.5" />
               <span className="text-xs font-medium uppercase tracking-wide">LED I</span>
             </div>
             <p className="text-xl font-bold tabular-nums">
-              {streetlight.current.toFixed(1)}
+              {fmt(streetlight.current, 1)}
               <span className="text-sm font-normal text-muted-foreground ml-1">mA</span>
             </p>
           </div>
-          
+
           <div className="space-y-1">
             <div className="flex items-center gap-1.5 text-muted-foreground">
               <Power className="h-3.5 w-3.5" />
               <span className="text-xs font-medium uppercase tracking-wide">Power</span>
             </div>
             <p className="text-xl font-bold tabular-nums">
-              {streetlight.power.toFixed(1)}
+              {fmt(streetlight.power, 1)}
               <span className="text-sm font-normal text-muted-foreground ml-1">mW</span>
             </p>
           </div>
         </div>
 
-        {/* Secondary metrics: Battery SoH, Luminance, Solar Current, Motion */}
+        {/* Secondary metrics */}
         <div className="grid grid-cols-4 gap-2">
           <div className="space-y-1 text-center">
             <div className="flex items-center justify-center gap-1 text-muted-foreground">
               <Battery className="h-3 w-3" />
             </div>
             <p className={cn("text-sm font-bold tabular-nums", batteryColor)}>
-              {streetlight.batterySOH.toFixed(0)}%
+              {hasData ? `${streetlight.batterySOH.toFixed(0)}%` : DASH}
             </p>
             <p className="text-[10px] text-muted-foreground">SoH</p>
           </div>
-          
+
           <div className="space-y-1 text-center">
             <div className="flex items-center justify-center gap-1 text-muted-foreground">
               <Eye className="h-3 w-3" />
             </div>
             <p className="text-sm font-bold tabular-nums">
-              {streetlight.luminance.toFixed(0)}
+              {hasData ? streetlight.luminance.toFixed(0) : DASH}
             </p>
             <p className="text-[10px] text-muted-foreground">Lux</p>
           </div>
-          
+
           <div className="space-y-1 text-center">
             <div className="flex items-center justify-center gap-1 text-muted-foreground">
               <Moon className="h-3 w-3" />
             </div>
             <p className="text-sm font-bold tabular-nums">
-              {streetlight.ldr.toFixed(0)}
+              {hasData ? streetlight.ldr.toFixed(0) : DASH}
             </p>
             <p className="text-[10px] text-muted-foreground">
-              {streetlight.ldr > 1000 ? 'Night' : streetlight.ldr < 500 ? 'Day' : 'Dusk'}
+              {hasData ? (streetlight.ldr > 1000 ? 'Night' : streetlight.ldr < 500 ? 'Day' : 'Dusk') : '—'}
             </p>
           </div>
-          
+
           <div className="space-y-1 text-center">
             <div className="flex items-center justify-center gap-1 text-muted-foreground">
               <Move className="h-3 w-3" />
             </div>
-            <p className={cn("text-sm font-bold", streetlight.motionDetected ? 'text-success' : 'text-muted-foreground')}>
-              {streetlight.motionDetected ? 'Yes' : 'No'}
+            <p className={cn("text-sm font-bold", !hasData ? 'text-muted-foreground' : streetlight.motionDetected ? 'text-success' : 'text-muted-foreground')}>
+              {hasData ? (streetlight.motionDetected ? 'Yes' : 'No') : DASH}
             </p>
             <p className="text-[10px] text-muted-foreground">Motion</p>
           </div>
         </div>
-        
+
         <div className="pt-2 border-t border-border">
           <p className="text-xs text-muted-foreground">
-            Last updated: {new Date(streetlight.lastUpdated).toLocaleTimeString()}
+            {hasData
+              ? `Last updated: ${new Date(streetlight.lastUpdated).toLocaleTimeString()}`
+              : 'No data received yet'}
           </p>
         </div>
       </CardContent>
