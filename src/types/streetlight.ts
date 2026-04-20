@@ -27,8 +27,9 @@ export interface Streetlight {
   lastUpdated: number;
   batterySOH: number;           // Battery State of Health %
   luminance: number;            // BH1750 lux reading
-  motionDetected: boolean;      // PIR motion sensor
+  motionDetected: boolean;      // Microwave motion sensor
   solarChargingCurrent: number; // Solar panel charging current (A)
+  ldr: number;                  // Raw LDR value (0-4095)
 }
 
 export interface Fault {

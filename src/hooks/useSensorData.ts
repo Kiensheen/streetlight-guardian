@@ -106,18 +106,27 @@ export const useSensorData = () => {
                 return;
               }
               const v = snapshot.val() as {
-                ldr?: number; v?: number; c?: number; p?: number;
-                lux?: number; br?: number; ts?: number;
+                ldr?: number; lux?: number; microwave?: number; ts?: number;
+                // New ESP32 field names
+                voltage?: number; current?: number; power?: number;
+                // Legacy short names (back-compat)
+                v?: number; c?: number; p?: number; br?: number;
               };
 
-              const voltage = Number(v.v ?? 0);
-              const currentA = Number(v.c ?? 0) / 1000; // mA → A
-              const powerW = Number(v.p ?? 0) / 1000;   // mW → W
+              // Support both new (voltage/current/power) and legacy (v/c/p) keys
+              const voltage = Number(v.voltage ?? v.v ?? 0);
+              const currentRaw = Number(v.current ?? v.c ?? 0);
+              const powerRaw = Number(v.power ?? v.p ?? 0);
+              // If value looks like mA/mW (>5), convert; otherwise assume already A/W
+              const currentA = Math.abs(currentRaw) > 5 ? currentRaw / 1000 : currentRaw;
+              const powerW = Math.abs(powerRaw) > 5 ? powerRaw / 1000 : powerRaw;
               const lux = Number(v.lux ?? 0);
-              const br = Number(v.br ?? 0);
+              const ldr = Number(v.ldr ?? 0);
+              const motion = Number(v.microwave ?? 0) === 1;
+              const br = Number(v.br ?? (lux > 10 ? 100 : 0));
               const tsMs = v.ts ? Number(v.ts) * 1000 : Date.now();
 
-              const status = deriveStatus(br, currentA, voltage);
+              const status = deriveStatus(br, Math.abs(currentA), voltage);
               const healthStatus = getHealthStatus(status, voltage);
 
               const light: Streetlight = {
@@ -127,13 +136,14 @@ export const useSensorData = () => {
                 status,
                 healthStatus,
                 voltage,
-                current: currentA,
-                power: powerW,
+                current: Math.max(0, currentA), // clamp negative noise
+                power: Math.max(0, powerW),
                 lastUpdated: tsMs,
                 batterySOH: estimateBatterySOH(voltage),
                 luminance: lux,
-                motionDetected: false, // not provided by ESP32
-                solarChargingCurrent: 0, // not provided by ESP32
+                motionDetected: motion,
+                solarChargingCurrent: 0,
+                ldr,
               };
 
               setReadings(prev => ({ ...prev, [nodeId]: light }));
