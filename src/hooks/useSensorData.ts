@@ -10,29 +10,26 @@ const faultTypeLabels: Record<FaultType, string> = {
   low_battery: 'Low Battery',
 };
 
-// ESP32 nodes — path: /lights/{nodeId}/data
+// ESP32 nodes — path: /lights/{nodeId}/sensors
+// Only node1 is currently online. Add more here when hardware is deployed.
 const NODE_CONFIG: { nodeId: string; name: string; location: string }[] = [
   { nodeId: 'node1', name: 'Streetlight 1', location: 'Main Street North' },
-  { nodeId: 'node2', name: 'Streetlight 2', location: 'Main Street Center' },
-  { nodeId: 'node3', name: 'Streetlight 3', location: 'Main Street South' },
 ];
 
-// Derive status from brightness + voltage + LED current
-const deriveStatus = (br: number, current: number, voltage: number): LightStatus => {
-  if (br <= 5 || current < 0.05) return 'off';
-  if (br < 80) return 'dim';
+const deriveStatus = (currentMa: number, voltage: number): LightStatus => {
+  if (Math.abs(currentMa) < 50) return 'off';
   if (voltage < 11.0) return 'dim';
+  if (Math.abs(currentMa) < 200) return 'dim';
   return 'on';
 };
 
-// Estimate battery State of Health from voltage (12V LiFePO4: 10.5V empty → 14.4V full)
 const estimateBatterySOH = (voltage: number): number => {
   const pct = ((voltage - 10.5) / (14.4 - 10.5)) * 100;
   return Math.max(0, Math.min(100, Math.round(pct)));
 };
 
 const getHealthStatus = (status: LightStatus, voltage: number): HealthStatus => {
-  if (voltage < 11.0) return 'fault';
+  if (voltage > 0 && voltage < 11.0) return 'fault';
   switch (status) {
     case 'on': return 'healthy';
     case 'flickering':
@@ -48,18 +45,15 @@ const generateFaults = (streetlights: Streetlight[]): Fault[] => {
     if (sl.healthStatus === 'healthy') return;
     let faultType: FaultType = 'off_when_scheduled_on';
     let description = '';
-    if (sl.voltage < 11.0) {
+    if (sl.voltage > 0 && sl.voltage < 11.0) {
       faultType = 'low_battery';
-      description = `${sl.name} battery critically low (${sl.voltage.toFixed(1)}V)`;
-    } else if (sl.status === 'flickering') {
-      faultType = 'flickering';
-      description = `${sl.name} is experiencing intermittent flickering`;
+      description = `${sl.name} battery low (${sl.voltage.toFixed(2)}V)`;
     } else if (sl.status === 'off') {
       faultType = 'off_when_scheduled_on';
-      description = `${sl.name} is off during scheduled operation hours`;
+      description = `${sl.name} is off`;
     } else if (sl.status === 'dim') {
       faultType = 'dim_output';
-      description = `${sl.name} has reduced brightness output`;
+      description = `${sl.name} has reduced output`;
     }
     faults.push({
       id: `fault-${sl.id}`,
@@ -67,7 +61,7 @@ const generateFaults = (streetlights: Streetlight[]): Fault[] => {
       streetlightName: sl.name,
       type: faultType,
       severity: sl.healthStatus === 'fault' ? 'high' : 'medium',
-      detectedAt: Date.now() - Math.random() * 3600000,
+      detectedAt: Date.now(),
       resolved: false,
       description,
     });
@@ -97,7 +91,7 @@ export const useSensorData = () => {
         if (cancelled) return;
 
         NODE_CONFIG.forEach(({ nodeId, name, location }) => {
-          const dataRef = ref(database, `lights/${nodeId}/data`);
+          const dataRef = ref(database, `lights/${nodeId}/sensors`);
           const unsub = onValue(
             dataRef,
             (snapshot) => {
@@ -106,27 +100,20 @@ export const useSensorData = () => {
                 return;
               }
               const v = snapshot.val() as {
-                ldr?: number; lux?: number; microwave?: number; ts?: number;
-                // New ESP32 field names
                 voltage?: number; current?: number; power?: number;
-                // Legacy short names (back-compat)
-                v?: number; c?: number; p?: number; br?: number;
+                lux?: number; ldr?: number; microwave?: number; ts?: number;
               };
 
-              // Support both new (voltage/current/power) and legacy (v/c/p) keys
-              const voltage = Number(v.voltage ?? v.v ?? 0);
-              const currentRaw = Number(v.current ?? v.c ?? 0);
-              const powerRaw = Number(v.power ?? v.p ?? 0);
-              // If value looks like mA/mW (>5), convert; otherwise assume already A/W
-              const currentA = Math.abs(currentRaw) > 5 ? currentRaw / 1000 : currentRaw;
-              const powerW = Math.abs(powerRaw) > 5 ? powerRaw / 1000 : powerRaw;
+              // RAW values exactly as stored in Firebase — no conversion.
+              const voltage = Number(v.voltage ?? 0);
+              const currentMa = Number(v.current ?? 0); // mA (raw)
+              const powerMw = Number(v.power ?? 0);     // mW (raw)
               const lux = Number(v.lux ?? 0);
               const ldr = Number(v.ldr ?? 0);
               const motion = Number(v.microwave ?? 0) === 1;
-              const br = Number(v.br ?? (lux > 10 ? 100 : 0));
               const tsMs = v.ts ? Number(v.ts) * 1000 : Date.now();
 
-              const status = deriveStatus(br, Math.abs(currentA), voltage);
+              const status = deriveStatus(currentMa, voltage);
               const healthStatus = getHealthStatus(status, voltage);
 
               const light: Streetlight = {
@@ -135,9 +122,9 @@ export const useSensorData = () => {
                 location,
                 status,
                 healthStatus,
-                voltage,
-                current: Math.max(0, currentA), // clamp negative noise
-                power: Math.max(0, powerW),
+                voltage,         // V (raw)
+                current: currentMa, // mA (raw, may be negative)
+                power: powerMw,    // mW (raw)
                 lastUpdated: tsMs,
                 batterySOH: estimateBatterySOH(voltage),
                 luminance: lux,
@@ -169,7 +156,6 @@ export const useSensorData = () => {
     };
   }, []);
 
-  // Recompute faults/notifications whenever readings change
   useEffect(() => {
     const lights = NODE_CONFIG
       .map(c => readings[c.nodeId])

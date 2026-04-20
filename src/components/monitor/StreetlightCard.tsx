@@ -85,8 +85,8 @@ const StreetlightCard: React.FC<StreetlightCardProps> = ({ streetlight }) => {
               <span className="text-xs font-medium uppercase tracking-wide">LED I</span>
             </div>
             <p className="text-xl font-bold tabular-nums">
-              {streetlight.current.toFixed(2)}
-              <span className="text-sm font-normal text-muted-foreground ml-1">A</span>
+              {streetlight.current.toFixed(1)}
+              <span className="text-sm font-normal text-muted-foreground ml-1">mA</span>
             </p>
           </div>
           
@@ -97,7 +97,7 @@ const StreetlightCard: React.FC<StreetlightCardProps> = ({ streetlight }) => {
             </div>
             <p className="text-xl font-bold tabular-nums">
               {streetlight.power.toFixed(1)}
-              <span className="text-sm font-normal text-muted-foreground ml-1">W</span>
+              <span className="text-sm font-normal text-muted-foreground ml-1">mW</span>
             </p>
           </div>
         </div>

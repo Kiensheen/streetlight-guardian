@@ -136,9 +136,23 @@ const Monitor: React.FC = () => {
           <TabsContent value="monitoring" className="space-y-4">
             {/* Streetlight Cards - stacked for mobile */}
             <div className="space-y-3">
-              {streetlights.map(streetlight => (
-                <StreetlightCard key={streetlight.id} streetlight={streetlight} />
-              ))}
+              {streetlights.length === 0 ? (
+                <Card className="border-border/50">
+                  <CardContent className="p-6 text-center">
+                    <WifiOff className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
+                    <p className="text-sm font-medium">
+                      {isFirebaseConnected ? 'Waiting for sensor data...' : 'Connection error - check Firebase'}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Reading from /lights/node1/sensors
+                    </p>
+                  </CardContent>
+                </Card>
+              ) : (
+                streetlights.map(streetlight => (
+                  <StreetlightCard key={streetlight.id} streetlight={streetlight} />
+                ))
+              )}
             </div>
             
             {/* Active Faults */}
