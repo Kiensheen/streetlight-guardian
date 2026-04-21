@@ -41,6 +41,8 @@ const Monitor: React.FC = () => {
     refresh,
   } = useSensorData();
 
+  useSnapshotWriter();
+
   const [isRefreshing, setIsRefreshing] = useState(false);
   const handleRefresh = async () => {
     setIsRefreshing(true);
