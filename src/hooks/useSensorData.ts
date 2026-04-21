@@ -143,7 +143,12 @@ export const useSensorData = () => {
 
   useEffect(() => {
     const database = getFirebaseDatabase();
+    console.log('[SensorData] Hook mounted', {
+      nodePaths: NODE_CONFIG.map(({ nodeId, path }) => ({ nodeId, path })),
+    });
+
     if (!database) {
+      console.error('[SensorData] Firebase database is not initialized');
       setIsLoading(false);
       return;
     }
@@ -154,23 +159,34 @@ export const useSensorData = () => {
     ensureFirebaseAuth()
       .then(() => {
         if (cancelled) return;
+        console.log('[SensorData] Firebase auth confirmed, subscribing to nodes');
         setIsFirebaseConnected(true);
 
         NODE_CONFIG.forEach((cfg) => {
+          console.log(`[SensorData] Subscribing to ${cfg.nodeId} at /${cfg.path}`);
           const dataRef = ref(database, cfg.path);
           const unsub = onValue(
             dataRef,
             (snapshot) => {
+              console.log(`[SensorData] Snapshot received for ${cfg.nodeId}`, {
+                path: `/${cfg.path}`,
+                exists: snapshot.exists(),
+                value: snapshot.val(),
+              });
+
               if (!snapshot.exists()) {
+                console.warn(`[SensorData] No data found at /${cfg.path}`);
                 setIsLoading(false);
                 return;
               }
+
               const light = mapSnapshotToLight(snapshot.val(), cfg);
+              console.log(`[SensorData] Parsed streetlight for ${cfg.nodeId}`, light);
               setReadings(prev => ({ ...prev, [cfg.nodeId]: light }));
               setIsLoading(false);
             },
             (error) => {
-              console.error(`Firebase error for ${cfg.nodeId}:`, error);
+              console.error(`[SensorData] Firebase listener error for ${cfg.nodeId} at /${cfg.path}:`, error);
               setIsLoading(false);
             }
           );
@@ -181,7 +197,7 @@ export const useSensorData = () => {
         setTimeout(() => setIsLoading(false), 1500);
       })
       .catch((err) => {
-        console.error('Auth failed, cannot subscribe:', err);
+        console.error('[SensorData] Auth failed, cannot subscribe:', err);
         setIsLoading(false);
       });
 
@@ -193,19 +209,33 @@ export const useSensorData = () => {
 
   const refresh = useCallback(async () => {
     const database = getFirebaseDatabase();
-    if (!database) return;
+    if (!database) {
+      console.error('[SensorData] Manual refresh aborted: database unavailable');
+      return;
+    }
+
     try {
+      console.log('[SensorData] Manual refresh started');
       await ensureFirebaseAuth();
       await Promise.all(NODE_CONFIG.map(async (cfg) => {
         const snap = await get(ref(database, cfg.path));
+        console.log(`[SensorData] Manual refresh result for ${cfg.nodeId}`, {
+          path: `/${cfg.path}`,
+          exists: snap.exists(),
+          value: snap.val(),
+        });
+
         if (snap.exists()) {
           const light = mapSnapshotToLight(snap.val(), cfg);
+          console.log(`[SensorData] Manual refresh parsed light for ${cfg.nodeId}`, light);
           setReadings(prev => ({ ...prev, [cfg.nodeId]: light }));
+        } else {
+          console.warn(`[SensorData] Manual refresh found no data at /${cfg.path}`);
         }
       }));
       setNow(Date.now());
     } catch (e) {
-      console.error('Manual refresh failed:', e);
+      console.error('[SensorData] Manual refresh failed:', e);
     }
   }, []);
 
