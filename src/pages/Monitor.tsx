@@ -8,8 +8,10 @@ import FaultFrequencyChart from '@/components/monitor/FaultFrequencyChart';
 import UptimeChart from '@/components/monitor/UptimeChart';
 import DailySummary from '@/components/monitor/DailySummary';
 import WeeklyAnalysis from '@/components/monitor/WeeklyAnalysis';
+import HistoryList from '@/components/monitor/HistoryList';
 import { useSensorData } from '@/hooks/useSensorData';
 import { useAnalytics } from '@/hooks/useAnalytics';
+import { useSnapshotWriter } from '@/hooks/useSnapshotWriter';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -38,6 +40,8 @@ const Monitor: React.FC = () => {
     markAllNotificationsAsRead,
     refresh,
   } = useSensorData();
+
+  useSnapshotWriter();
 
   const [isRefreshing, setIsRefreshing] = useState(false);
   const handleRefresh = async () => {
@@ -207,6 +211,7 @@ const Monitor: React.FC = () => {
           </TabsContent>
 
           <TabsContent value="history" className="space-y-4">
+            <HistoryList />
             <DailySummary streetlights={streetlights} />
             <WeeklyAnalysis streetlights={streetlights} />
           </TabsContent>
