@@ -19,6 +19,11 @@ let authPromise: Promise<void> | null = null;
 
 export const initializeFirebase = () => {
   if (!app) {
+    console.log('[Firebase] Initializing app', {
+      databaseURL: firebaseConfig.databaseURL,
+      authDomain: firebaseConfig.authDomain,
+      projectId: firebaseConfig.projectId,
+    });
     app = initializeApp(firebaseConfig);
     database = getDatabase(app);
     auth = getAuth(app);
@@ -36,15 +41,17 @@ export const ensureFirebaseAuth = (): Promise<void> => {
   initializeFirebase();
   authPromise = new Promise<void>((resolve, reject) => {
     if (!auth) return reject(new Error('Auth not initialized'));
+    console.log('[Firebase Auth] Waiting for auth state...');
     const unsub = onAuthStateChanged(auth, (user) => {
       if (user) {
-        console.log('🔐 Firebase auth ready:', user.uid);
+        console.log('[Firebase Auth] Anonymous auth ready', { uid: user.uid, isAnonymous: user.isAnonymous });
         unsub();
         resolve();
       }
     });
+    console.log('[Firebase Auth] Signing in anonymously...');
     signInAnonymously(auth).catch((err) => {
-      console.error('Anonymous sign-in failed:', err);
+      console.error('[Firebase Auth] Anonymous sign-in failed:', err);
       unsub();
       reject(err);
     });
