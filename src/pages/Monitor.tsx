@@ -102,7 +102,7 @@ const Monitor: React.FC = () => {
             {isFirebaseConnected ? (
               <><Wifi className="h-3 w-3 mr-1" /> Live</>
             ) : (
-              <><WifiOff className="h-3 w-3 mr-1" /> Demo</>
+                <><WifiOff className="h-3 w-3 mr-1" /> Offline</>
             )}
           </Badge>
           
@@ -185,7 +185,7 @@ const Monitor: React.FC = () => {
                   <div className="flex items-center justify-between p-2.5 rounded-lg bg-muted/50">
                     <span className="text-xs text-muted-foreground">Source</span>
                     <span className="text-xs font-medium">
-                      {isFirebaseConnected ? 'ESP32 → Firebase' : 'Demo Data'}
+                      {isFirebaseConnected ? 'ESP32 → Firebase' : 'Firebase (last known)'}
                     </span>
                   </div>
                   <div className="flex items-center justify-between p-2.5 rounded-lg bg-muted/50">
