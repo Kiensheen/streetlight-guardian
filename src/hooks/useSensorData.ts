@@ -10,12 +10,13 @@ const faultTypeLabels: Record<FaultType, string> = {
   low_battery: 'Low Battery',
 };
 
-// Three streetlights. Node1 reads from /sensors (current ESP32 path).
-// Node2 and Node3 read from their own paths and will simply stay empty until data arrives.
-const NODE_CONFIG: { nodeId: string; path: string; name: string; location: string }[] = [
-  { nodeId: 'node1', path: 'sensors', name: 'Streetlight 1', location: 'Main Street North' },
-  { nodeId: 'node2', path: 'lights/node2/sensors', name: 'Streetlight 2', location: 'Main Street Center' },
-  { nodeId: 'node3', path: 'lights/node3/sensors', name: 'Streetlight 3', location: 'Main Street South' },
+// Only Streetlight 1 has a real ESP32 publishing to /sensors.
+// Streetlights 2 and 3 are placeholders — no Firebase read is performed for them.
+const SENSORS_PATH = 'sensors';
+const NODE_CONFIG: { nodeId: string; path: string | null; name: string; location: string }[] = [
+  { nodeId: 'node1', path: SENSORS_PATH, name: 'Streetlight 1', location: 'Main Street North' },
+  { nodeId: 'node2', path: null, name: 'Streetlight 2', location: 'Main Street Center' },
+  { nodeId: 'node3', path: null, name: 'Streetlight 3', location: 'Main Street South' },
 ];
 
 // Consider a node "Online" only if its last update is within this window.
@@ -163,6 +164,10 @@ export const useSensorData = () => {
         setIsFirebaseConnected(true);
 
         NODE_CONFIG.forEach((cfg) => {
+          if (!cfg.path) {
+            console.log(`[SensorData] Skipping ${cfg.nodeId} (no Firebase path configured)`);
+            return;
+          }
           console.log(`[SensorData] Subscribing to ${cfg.nodeId} at /${cfg.path}`);
           const dataRef = ref(database, cfg.path);
           const unsub = onValue(
@@ -218,6 +223,7 @@ export const useSensorData = () => {
       console.log('[SensorData] Manual refresh started');
       await ensureFirebaseAuth();
       await Promise.all(NODE_CONFIG.map(async (cfg) => {
+        if (!cfg.path) return;
         const snap = await get(ref(database, cfg.path));
         console.log(`[SensorData] Manual refresh result for ${cfg.nodeId}`, {
           path: `/${cfg.path}`,
