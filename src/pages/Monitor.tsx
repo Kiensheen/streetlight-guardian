@@ -9,16 +9,19 @@ import UptimeChart from '@/components/monitor/UptimeChart';
 import DailySummary from '@/components/monitor/DailySummary';
 import WeeklyAnalysis from '@/components/monitor/WeeklyAnalysis';
 import HistoryList from '@/components/monitor/HistoryList';
+import FirestoreHistoryList from '@/components/monitor/FirestoreHistoryList';
+import FaultsHistoryList from '@/components/monitor/FaultsHistoryList';
 import { useSensorData } from '@/hooks/useSensorData';
 import { useAnalytics } from '@/hooks/useAnalytics';
 import { useSnapshotWriter } from '@/hooks/useSnapshotWriter';
+import { useFaultLogger } from '@/hooks/useFaultLogger';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { Activity, Wifi, WifiOff, LayoutDashboard, BarChart3, History, RefreshCw } from 'lucide-react';
+import { Activity, Wifi, WifiOff, LayoutDashboard, BarChart3, History, RefreshCw, AlertTriangle } from 'lucide-react';
 
 const Monitor: React.FC = () => {
   const [isDarkMode, setIsDarkMode] = useState(() => {
