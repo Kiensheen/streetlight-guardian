@@ -45,6 +45,7 @@ const Monitor: React.FC = () => {
   } = useSensorData();
 
   useSnapshotWriter();
+  useFaultLogger(streetlights);
 
   const [isRefreshing, setIsRefreshing] = useState(false);
   const handleRefresh = async () => {
