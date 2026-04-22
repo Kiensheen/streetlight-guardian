@@ -1,11 +1,14 @@
 import { useEffect } from 'react';
-import { getFirebaseDatabase, ref, get, set, ensureFirebaseAuth } from '@/lib/database';
+import { getFirebaseDatabase, ref, get, ensureFirebaseAuth, getFirebaseFirestore } from '@/lib/database';
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 
-// Every 60s, read /sensors and save a snapshot to /history/{timestamp}
+// Every 60s, read /sensors and save a snapshot to Firestore `sensor_history`.
+// Non-blocking: errors only logged, never thrown to the UI.
 export const useSnapshotWriter = () => {
   useEffect(() => {
     const db = getFirebaseDatabase();
-    if (!db) return;
+    const fs = getFirebaseFirestore();
+    if (!db || !fs) return;
 
     let cancelled = false;
 
@@ -19,25 +22,26 @@ export const useSnapshotWriter = () => {
           return;
         }
         const v = snap.val() ?? {};
-        const now = new Date();
-        const timestamp = now.toISOString().replace(/[.:]/g, '-');
         const entry = {
-          timestamp: now.toISOString(),
+          nodeId: 'node1',
           voltage: Number(v.voltage ?? 0),
           current: Number(v.current ?? 0),
           power: Number(v.power ?? 0),
           lux: Number(v.lux ?? 0),
           ldr: Number(v.ldr ?? 0),
           microwave: Number(v.microwave ?? 0),
+          timestamp: serverTimestamp(),
+          clientTimestamp: Date.now(),
         };
-        await set(ref(db, `history/${timestamp}`), entry);
-        console.log('[Snapshot] Saved', timestamp, entry);
+        // Fire-and-forget: don't block UI
+        addDoc(collection(fs, 'sensor_history'), entry)
+          .then(() => console.log('[Snapshot] Saved to Firestore', entry))
+          .catch((e) => console.error('[Snapshot] Firestore write failed:', e));
       } catch (e) {
         console.error('[Snapshot] Failed:', e);
       }
     };
 
-    // Write one immediately, then every 60s
     writeSnapshot();
     const id = setInterval(writeSnapshot, 60_000);
 
