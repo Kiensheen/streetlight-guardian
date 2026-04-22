@@ -1,6 +1,14 @@
 import { initializeApp } from 'firebase/app';
 import { getDatabase, ref, onValue, get, set, push, Database } from 'firebase/database';
-import { getAuth, signInAnonymously, onAuthStateChanged, Auth } from 'firebase/auth';
+import {
+  Auth,
+  browserLocalPersistence,
+  browserSessionPersistence,
+  indexedDBLocalPersistence,
+  initializeAuth,
+  onAuthStateChanged,
+  signInAnonymously,
+} from 'firebase/auth';
 import { getFirestore, Firestore } from 'firebase/firestore';
 
 const firebaseConfig = {
@@ -28,7 +36,12 @@ export const initializeFirebase = () => {
     });
     app = initializeApp(firebaseConfig);
     database = getDatabase(app);
-    auth = getAuth(app);
+    auth = initializeAuth(app, {
+      persistence: [indexedDBLocalPersistence, browserLocalPersistence, browserSessionPersistence],
+    });
+    console.log('[Firebase Auth] Persistence enabled', {
+      modes: ['indexedDBLocalPersistence', 'browserLocalPersistence', 'browserSessionPersistence'],
+    });
     firestore = getFirestore(app);
   }
   return { app, database, auth, firestore };
@@ -49,22 +62,50 @@ export const ensureFirebaseAuth = (): Promise<void> => {
   initializeFirebase();
   authPromise = new Promise<void>((resolve, reject) => {
     if (!auth) return reject(new Error('Auth not initialized'));
-    console.log('[Firebase Auth] Waiting for auth state...');
-    const unsub = onAuthStateChanged(auth, (user) => {
-      if (user) {
-        console.log('[Firebase Auth] Anonymous auth ready', { uid: user.uid, isAnonymous: user.isAnonymous });
+    if (auth.currentUser) {
+      console.log('[Firebase Auth] Reusing persisted auth session', {
+        uid: auth.currentUser.uid,
+        isAnonymous: auth.currentUser.isAnonymous,
+      });
+      resolve();
+      return;
+    }
+
+    console.log('[Firebase Auth] Restoring auth state...');
+    let checkedInitialState = false;
+
+    const unsub = onAuthStateChanged(
+      auth,
+      async (user) => {
+        if (user) {
+          console.log('[Firebase Auth] Anonymous auth ready', { uid: user.uid, isAnonymous: user.isAnonymous });
+          unsub();
+          resolve();
+          return;
+        }
+
+        if (checkedInitialState) return;
+        checkedInitialState = true;
+
+        try {
+          console.log('[Firebase Auth] No saved session, signing in anonymously...');
+          await signInAnonymously(auth);
+        } catch (err) {
+          console.error('[Firebase Auth] Anonymous sign-in failed:', err);
+          unsub();
+          reject(err);
+        }
+      },
+      (err) => {
+        console.error('[Firebase Auth] Auth state listener failed:', err);
         unsub();
-        resolve();
+        reject(err);
       }
-    });
-    console.log('[Firebase Auth] Signing in anonymously...');
-    signInAnonymously(auth).catch((err) => {
-      console.error('[Firebase Auth] Anonymous sign-in failed:', err);
-      unsub();
-      reject(err);
-    });
+    );
   });
-  authPromise.catch(() => {});
+  authPromise.catch(() => {
+    authPromise = null;
+  });
   return authPromise;
 };
 
