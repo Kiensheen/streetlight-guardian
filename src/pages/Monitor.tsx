@@ -219,9 +219,14 @@ const Monitor: React.FC = () => {
           </TabsContent>
 
           <TabsContent value="history" className="space-y-4">
+            <FirestoreHistoryList />
             <HistoryList />
             <DailySummary streetlights={streetlights} />
             <WeeklyAnalysis streetlights={streetlights} />
+          </TabsContent>
+
+          <TabsContent value="faults" className="space-y-4">
+            <FaultsHistoryList />
           </TabsContent>
         </Tabs>
       </main>
