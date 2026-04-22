@@ -158,10 +158,31 @@ export const useSensorData = () => {
     let cancelled = false;
 
     ensureFirebaseAuth()
-      .then(() => {
+      .then(async () => {
         if (cancelled) return;
-        console.log('[SensorData] Firebase auth confirmed, subscribing to nodes');
-        setIsFirebaseConnected(true);
+        console.log('[SensorData] Firebase auth confirmed, fetching latest data and subscribing to nodes');
+
+        await Promise.all(NODE_CONFIG.map(async (cfg) => {
+          if (!cfg.path) return;
+          try {
+            const initialSnap = await get(ref(database, cfg.path));
+            console.log(`[SensorData] Initial load for ${cfg.nodeId}`, {
+              path: `/${cfg.path}`,
+              exists: initialSnap.exists(),
+              value: initialSnap.val(),
+            });
+
+            if (initialSnap.exists()) {
+              const light = mapSnapshotToLight(initialSnap.val(), cfg);
+              console.log(`[SensorData] Initial parsed streetlight for ${cfg.nodeId}`, light);
+              setReadings(prev => ({ ...prev, [cfg.nodeId]: light }));
+              setIsFirebaseConnected(true);
+              setIsLoading(false);
+            }
+          } catch (error) {
+            console.error(`[SensorData] Initial load failed for ${cfg.nodeId} at /${cfg.path}:`, error);
+          }
+        }));
 
         NODE_CONFIG.forEach((cfg) => {
           if (!cfg.path) {
@@ -178,6 +199,7 @@ export const useSensorData = () => {
                 exists: snapshot.exists(),
                 value: snapshot.val(),
               });
+              setIsFirebaseConnected(true);
 
               if (!snapshot.exists()) {
                 console.warn(`[SensorData] No data found at /${cfg.path}`);
@@ -192,6 +214,7 @@ export const useSensorData = () => {
             },
             (error) => {
               console.error(`[SensorData] Firebase listener error for ${cfg.nodeId} at /${cfg.path}:`, error);
+              setIsFirebaseConnected(false);
               setIsLoading(false);
             }
           );
