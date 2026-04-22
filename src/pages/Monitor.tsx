@@ -9,16 +9,19 @@ import UptimeChart from '@/components/monitor/UptimeChart';
 import DailySummary from '@/components/monitor/DailySummary';
 import WeeklyAnalysis from '@/components/monitor/WeeklyAnalysis';
 import HistoryList from '@/components/monitor/HistoryList';
+import FirestoreHistoryList from '@/components/monitor/FirestoreHistoryList';
+import FaultsHistoryList from '@/components/monitor/FaultsHistoryList';
 import { useSensorData } from '@/hooks/useSensorData';
 import { useAnalytics } from '@/hooks/useAnalytics';
 import { useSnapshotWriter } from '@/hooks/useSnapshotWriter';
+import { useFaultLogger } from '@/hooks/useFaultLogger';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { Activity, Wifi, WifiOff, LayoutDashboard, BarChart3, History, RefreshCw } from 'lucide-react';
+import { Activity, Wifi, WifiOff, LayoutDashboard, BarChart3, History, RefreshCw, AlertTriangle } from 'lucide-react';
 
 const Monitor: React.FC = () => {
   const [isDarkMode, setIsDarkMode] = useState(() => {
@@ -42,6 +45,7 @@ const Monitor: React.FC = () => {
   } = useSensorData();
 
   useSnapshotWriter();
+  useFaultLogger(streetlights);
 
   const [isRefreshing, setIsRefreshing] = useState(false);
   const handleRefresh = async () => {
@@ -155,6 +159,10 @@ const Monitor: React.FC = () => {
               <History className="h-3.5 w-3.5" />
               History
             </TabsTrigger>
+            <TabsTrigger value="faults" className="flex-1 gap-1.5 text-xs">
+              <AlertTriangle className="h-3.5 w-3.5" />
+              Faults
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="monitoring" className="space-y-4">
@@ -211,9 +219,14 @@ const Monitor: React.FC = () => {
           </TabsContent>
 
           <TabsContent value="history" className="space-y-4">
+            <FirestoreHistoryList />
             <HistoryList />
             <DailySummary streetlights={streetlights} />
             <WeeklyAnalysis streetlights={streetlights} />
+          </TabsContent>
+
+          <TabsContent value="faults" className="space-y-4">
+            <FaultsHistoryList />
           </TabsContent>
         </Tabs>
       </main>

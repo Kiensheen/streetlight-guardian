@@ -1,6 +1,7 @@
 import { initializeApp } from 'firebase/app';
 import { getDatabase, ref, onValue, get, set, push, Database } from 'firebase/database';
 import { getAuth, signInAnonymously, onAuthStateChanged, Auth } from 'firebase/auth';
+import { getFirestore, Firestore } from 'firebase/firestore';
 
 const firebaseConfig = {
   apiKey: "AIzaSyBoi1ejuiRUVaqGV8xdHH2utpmy8DXnz7I",
@@ -15,6 +16,7 @@ const firebaseConfig = {
 let app: ReturnType<typeof initializeApp> | null = null;
 let database: Database | null = null;
 let auth: Auth | null = null;
+let firestore: Firestore | null = null;
 let authPromise: Promise<void> | null = null;
 
 export const initializeFirebase = () => {
@@ -27,13 +29,19 @@ export const initializeFirebase = () => {
     app = initializeApp(firebaseConfig);
     database = getDatabase(app);
     auth = getAuth(app);
+    firestore = getFirestore(app);
   }
-  return { app, database, auth };
+  return { app, database, auth, firestore };
 };
 
 export const getFirebaseDatabase = () => {
   if (!database) initializeFirebase();
   return database;
+};
+
+export const getFirebaseFirestore = () => {
+  if (!firestore) initializeFirebase();
+  return firestore;
 };
 
 export const ensureFirebaseAuth = (): Promise<void> => {
@@ -56,7 +64,6 @@ export const ensureFirebaseAuth = (): Promise<void> => {
       reject(err);
     });
   });
-  // Swallow at module level so it can't crash the React render
   authPromise.catch(() => {});
   return authPromise;
 };
