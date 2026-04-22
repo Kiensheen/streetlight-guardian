@@ -159,6 +159,10 @@ const Monitor: React.FC = () => {
               <History className="h-3.5 w-3.5" />
               History
             </TabsTrigger>
+            <TabsTrigger value="faults" className="flex-1 gap-1.5 text-xs">
+              <AlertTriangle className="h-3.5 w-3.5" />
+              Faults
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="monitoring" className="space-y-4">
