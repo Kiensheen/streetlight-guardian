@@ -100,37 +100,11 @@ const Monitor: React.FC = () => {
       <main className="px-4 py-4 pb-8 max-w-lg mx-auto">
         {/* Connection Status & Quick Stats */}
         <div className="flex items-center justify-between mb-4">
-          <Badge 
-            variant="outline" 
-            className={isFirebaseConnected 
-              ? "bg-success/10 text-success border-success/20" 
-              : "bg-muted text-muted-foreground"
-            }
-          >
-            {isFirebaseConnected ? (
-              <><Wifi className="h-3 w-3 mr-1" /> Live</>
-            ) : (
-                <><WifiOff className="h-3 w-3 mr-1" /> Offline</>
-            )}
-          </Badge>
+          <span className="text-xs font-medium text-muted-foreground">
+            {isFirebaseConnected ? 'Live' : 'Offline'}
+          </span>
           
           <div className="flex items-center gap-2">
-            <div className="flex items-center gap-1 px-2 py-1 rounded-full bg-success/10 text-success">
-              <div className="h-1.5 w-1.5 rounded-full bg-success animate-pulse" />
-              <span className="text-xs font-medium">{healthySL}</span>
-            </div>
-            {warningSL > 0 && (
-              <div className="flex items-center gap-1 px-2 py-1 rounded-full bg-warning/10 text-warning">
-                <div className="h-1.5 w-1.5 rounded-full bg-warning" />
-                <span className="text-xs font-medium">{warningSL}</span>
-              </div>
-            )}
-            {faultSL > 0 && (
-              <div className="flex items-center gap-1 px-2 py-1 rounded-full bg-destructive/10 text-destructive">
-                <div className="h-1.5 w-1.5 rounded-full bg-destructive" />
-                <span className="text-xs font-medium">{faultSL}</span>
-              </div>
-            )}
             <Button
               type="button"
               size="sm"
