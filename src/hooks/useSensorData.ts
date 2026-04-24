@@ -20,7 +20,8 @@ const NODE_CONFIG: { nodeId: string; path: string | null; name: string; location
 ];
 
 // Consider a node "Online" only if its last update is within this window.
-const ONLINE_WINDOW_MS = 60 * 1000; // 60 seconds
+const ONLINE_WINDOW_MS = 2 * 60 * 1000; // 2 minutes
+const FRESHNESS_TICK_MS = 30 * 1000; // re-evaluate every 30s
 
 const deriveStatus = (currentMa: number, voltage: number): LightStatus => {
   if (Math.abs(currentMa) < 50) return 'off';
@@ -49,6 +50,7 @@ const generateFaults = (streetlights: Streetlight[]): Fault[] => {
   const faults: Fault[] = [];
   streetlights.forEach(sl => {
     if (!sl.hasData) return;
+    if (!sl.online) return; // stale data shouldn't generate live faults
 
     // ESP32-driven faults take priority
     if (sl.ledStatus === 'DEGRADED') {
@@ -187,9 +189,9 @@ export const useSensorData = () => {
   const [isFirebaseConnected, setIsFirebaseConnected] = useState(false);
   const [now, setNow] = useState(Date.now());
 
-  // Tick every 10s so Online/Offline freshness re-evaluates
+  // Tick every 30s so Online/Offline freshness re-evaluates
   useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 10000);
+    const id = setInterval(() => setNow(Date.now()), FRESHNESS_TICK_MS);
     return () => clearInterval(id);
   }, []);
 
@@ -340,7 +342,7 @@ export const useSensorData = () => {
       timestamp: fault.detectedAt,
       read: false,
     })));
-  }, [readings]);
+  }, [readings, now]);
 
   const markNotificationAsRead = useCallback((notificationId: string) => {
     setNotifications(prev =>

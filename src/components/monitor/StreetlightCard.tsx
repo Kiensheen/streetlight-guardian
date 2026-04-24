@@ -27,20 +27,22 @@ const DASH = '--';
 const StreetlightCard: React.FC<StreetlightCardProps> = ({ streetlight }) => {
   const hasData = streetlight.hasData ?? false;
   const isOnline = streetlight.online ?? false;
+  // Show live values only when we have data AND the node is currently online
+  const showLive = hasData && isOnline;
 
   // When offline/no-data, neutralize visual health to muted instead of "fault"
-  const effectiveHealth: HealthStatus = hasData ? streetlight.healthStatus : 'healthy';
+  const effectiveHealth: HealthStatus = showLive ? streetlight.healthStatus : 'healthy';
   const status = statusConfig[streetlight.status];
   const health = healthConfig[effectiveHealth];
   const StatusIcon = status.icon;
 
-  const batteryColor = !hasData
+  const batteryColor = !showLive
     ? 'text-muted-foreground'
     : streetlight.batterySOH >= 80 ? 'text-success'
     : streetlight.batterySOH >= 50 ? 'text-warning'
     : 'text-destructive';
 
-  const fmt = (n: number, digits = 1) => hasData ? n.toFixed(digits) : DASH;
+  const fmt = (n: number, digits = 1) => showLive ? n.toFixed(digits) : DASH;
 
   return (
     <Card className={cn(
@@ -97,6 +99,14 @@ const StreetlightCard: React.FC<StreetlightCardProps> = ({ streetlight }) => {
           </div>
         )}
 
+        {hasData && !isOnline && (
+          <div className="rounded-lg border border-dashed border-border bg-muted/30 px-3 py-2 text-center">
+            <p className="text-xs font-medium text-muted-foreground">
+              Last seen: {new Date(streetlight.lastUpdated).toLocaleString()}
+            </p>
+          </div>
+        )}
+
         {/* Primary metrics */}
         <div className="grid grid-cols-3 gap-3">
           <div className="space-y-1">
@@ -140,7 +150,7 @@ const StreetlightCard: React.FC<StreetlightCardProps> = ({ streetlight }) => {
               <Battery className="h-3 w-3" />
             </div>
             <p className={cn("text-sm font-bold tabular-nums", batteryColor)}>
-              {hasData ? `${streetlight.batterySOH.toFixed(0)}%` : DASH}
+              {showLive ? `${streetlight.batterySOH.toFixed(0)}%` : DASH}
             </p>
             <p className="text-[10px] text-muted-foreground">SoH</p>
           </div>
@@ -150,7 +160,7 @@ const StreetlightCard: React.FC<StreetlightCardProps> = ({ streetlight }) => {
               <Eye className="h-3 w-3" />
             </div>
             <p className="text-sm font-bold tabular-nums">
-              {hasData ? streetlight.luminance.toFixed(0) : DASH}
+              {showLive ? streetlight.luminance.toFixed(0) : DASH}
             </p>
             <p className="text-[10px] text-muted-foreground">Lux</p>
           </div>
@@ -160,10 +170,10 @@ const StreetlightCard: React.FC<StreetlightCardProps> = ({ streetlight }) => {
               <Moon className="h-3 w-3" />
             </div>
             <p className="text-sm font-bold tabular-nums">
-              {hasData ? streetlight.ldr.toFixed(0) : DASH}
+              {showLive ? streetlight.ldr.toFixed(0) : DASH}
             </p>
             <p className="text-[10px] text-muted-foreground">
-              {hasData ? (streetlight.ldr > 1000 ? 'Night' : streetlight.ldr < 500 ? 'Day' : 'Dusk') : '—'}
+              {showLive ? (streetlight.ldr > 1000 ? 'Night' : streetlight.ldr < 500 ? 'Day' : 'Dusk') : '—'}
             </p>
           </div>
 
@@ -171,15 +181,15 @@ const StreetlightCard: React.FC<StreetlightCardProps> = ({ streetlight }) => {
             <div className="flex items-center justify-center gap-1 text-muted-foreground">
               <Move className="h-3 w-3" />
             </div>
-            <p className={cn("text-sm font-bold", !hasData ? 'text-muted-foreground' : streetlight.motionDetected ? 'text-success' : 'text-muted-foreground')}>
-              {hasData ? (streetlight.motionDetected ? 'Yes' : 'No') : DASH}
+            <p className={cn("text-sm font-bold", !showLive ? 'text-muted-foreground' : streetlight.motionDetected ? 'text-success' : 'text-muted-foreground')}>
+              {showLive ? (streetlight.motionDetected ? 'Yes' : 'No') : DASH}
             </p>
             <p className="text-[10px] text-muted-foreground">Motion</p>
           </div>
         </div>
 
         {/* ESP32-derived statuses */}
-        {hasData && (streetlight.ledStatus || streetlight.batteryStatus || streetlight.soh !== undefined) && (
+        {showLive && (streetlight.ledStatus || streetlight.batteryStatus || streetlight.soh !== undefined) && (
           <div className="grid grid-cols-3 gap-2 pt-2 border-t border-border">
             <div className="space-y-1">
               <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Battery SoH</p>
