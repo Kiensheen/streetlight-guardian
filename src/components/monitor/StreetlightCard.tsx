@@ -75,18 +75,9 @@ const StreetlightCard: React.FC<StreetlightCardProps> = ({ streetlight }) => {
               )}
             </div>
           </div>
-          <Badge
-            variant="outline"
-            className={cn(
-              "font-medium gap-1",
-              isOnline
-                ? "bg-success/10 text-success border-success/30"
-                : "bg-muted text-muted-foreground border-border"
-            )}
-          >
-            {isOnline ? <Wifi className="h-3 w-3" /> : <WifiOff className="h-3 w-3" />}
+          <span className="text-xs font-medium text-muted-foreground">
             {isOnline ? 'Online' : 'Offline'}
-          </Badge>
+          </span>
         </div>
       </CardHeader>
 
