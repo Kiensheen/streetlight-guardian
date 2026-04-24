@@ -49,7 +49,48 @@ const generateFaults = (streetlights: Streetlight[]): Fault[] => {
   const faults: Fault[] = [];
   streetlights.forEach(sl => {
     if (!sl.hasData) return;
+
+    // ESP32-driven faults take priority
+    if (sl.ledStatus === 'DEGRADED') {
+      faults.push({
+        id: `fault-${sl.id}-led`,
+        streetlightId: sl.id,
+        streetlightName: sl.name,
+        type: 'dim_output',
+        severity: 'high',
+        detectedAt: Date.now(),
+        resolved: false,
+        description: `LED Degraded - Bulb replacement needed`,
+      });
+    }
+    if (sl.batteryStatus === 'DEGRADED') {
+      faults.push({
+        id: `fault-${sl.id}-batt`,
+        streetlightId: sl.id,
+        streetlightName: sl.name,
+        type: 'low_battery',
+        severity: 'high',
+        detectedAt: Date.now(),
+        resolved: false,
+        description: `Battery Degraded - Check battery health`,
+      });
+    }
+    if (sl.soh !== undefined && sl.soh < 50 && sl.batteryStatus !== 'DEGRADED') {
+      faults.push({
+        id: `fault-${sl.id}-soh`,
+        streetlightId: sl.id,
+        streetlightName: sl.name,
+        type: 'low_battery',
+        severity: 'medium',
+        detectedAt: Date.now(),
+        resolved: false,
+        description: `Battery State of Health critical (${sl.soh.toFixed(0)}%)`,
+      });
+    }
+
     if (sl.healthStatus === 'healthy') return;
+    if (faults.some(f => f.streetlightId === sl.id)) return; // already added ESP32 faults
+
     let faultType: FaultType = 'off_when_scheduled_on';
     let description = '';
     if (sl.voltage > 0 && sl.voltage < 11.0) {
