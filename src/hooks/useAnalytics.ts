@@ -1,98 +1,45 @@
 import { useMemo } from 'react';
-import { Streetlight, Fault, WeeklySummary, LightStatus } from '@/types/streetlight';
-
-const generateWeeklyReadings = (baseValue: number, variance: number, count: number = 168) => {
-  const readings: { timestamp: number; value: number }[] = [];
-  const now = Date.now();
-  const weekMs = 7 * 24 * 60 * 60 * 1000;
-  const interval = weekMs / count;
-  
-  for (let i = 0; i < count; i++) {
-    readings.push({
-      timestamp: now - weekMs + (i * interval),
-      value: baseValue + (Math.random() - 0.5) * variance,
-    });
-  }
-  
-  return readings;
-};
-
-const generateTimeline = (status: LightStatus): { timestamp: number; status: LightStatus }[] => {
-  const timeline: { timestamp: number; status: LightStatus }[] = [];
-  const now = Date.now();
-  const weekMs = 7 * 24 * 60 * 60 * 1000;
-  const dayMs = 24 * 60 * 60 * 1000;
-  
-  for (let i = 0; i < 7; i++) {
-    const dayStart = now - weekMs + (i * dayMs);
-    timeline.push({ timestamp: dayStart + 18 * 3600000, status: 'on' });
-    timeline.push({ timestamp: dayStart + 30 * 3600000, status: 'off' });
-  }
-  
-  return timeline;
-};
+import { Streetlight, Fault, WeeklySummary } from '@/types/streetlight';
 
 export const useAnalytics = (streetlights: Streetlight[], faults: Fault[]) => {
   const summaries = useMemo<WeeklySummary[]>(() => {
     const now = Date.now();
     const weekMs = 7 * 24 * 60 * 60 * 1000;
     const weekStart = now - weekMs;
-    
+
     return streetlights.map(sl => {
-      // 12V LiFePO4 battery voltage range
-      const voltageReadings = generateWeeklyReadings(
-        sl.status === 'off' ? 10.8 : 13.0,
-        sl.status === 'off' ? 0.5 : 1.5
-      );
-      // LED current 0-3A
-      const currentReadings = generateWeeklyReadings(
-        sl.status === 'off' ? 0 : 1.8,
-        sl.status === 'off' ? 0 : 1.0
-      );
-      // LED power 0-50W
-      const powerReadings = generateWeeklyReadings(
-        sl.status === 'off' ? 0 : 25,
-        sl.status === 'off' ? 0 : 15
-      );
-      
-      const voltageValues = voltageReadings.map(r => r.value).filter(v => v > 0);
-      const currentValues = currentReadings.map(r => r.value).filter(v => v > 0);
-      const powerValues = powerReadings.map(r => r.value);
-      
       const slFaults = faults.filter(f => f.streetlightId === sl.id);
-      
-      let uptimePercentage = 100;
-      if (sl.healthStatus === 'fault') {
-        uptimePercentage = 20 + Math.random() * 30;
-      } else if (sl.healthStatus === 'warning') {
-        uptimePercentage = 70 + Math.random() * 20;
-      }
-      
+      const hasFreshData = Boolean(sl.hasData && sl.online);
+      const voltage = hasFreshData ? sl.voltage : 0;
+      const current = hasFreshData ? sl.current : 0;
+      const power = hasFreshData ? sl.power : 0;
+      const uptimePercentage = hasFreshData ? 100 : 0;
+
       return {
         streetlightId: sl.id,
         weekStart,
         weekEnd: now,
         voltageStats: {
-          min: voltageValues.length > 0 ? Math.min(...voltageValues) : 0,
-          max: voltageValues.length > 0 ? Math.max(...voltageValues) : 0,
-          avg: voltageValues.length > 0 ? voltageValues.reduce((a, b) => a + b, 0) / voltageValues.length : 0,
-          readings: voltageReadings,
+          min: voltage,
+          max: voltage,
+          avg: voltage,
+          readings: hasFreshData ? [{ timestamp: sl.lastUpdated, value: voltage }] : [],
         },
         currentStats: {
-          min: currentValues.length > 0 ? Math.min(...currentValues) : 0,
-          max: currentValues.length > 0 ? Math.max(...currentValues) : 0,
-          avg: currentValues.length > 0 ? currentValues.reduce((a, b) => a + b, 0) / currentValues.length : 0,
-          readings: currentReadings,
+          min: current,
+          max: current,
+          avg: current,
+          readings: hasFreshData ? [{ timestamp: sl.lastUpdated, value: current }] : [],
         },
         powerStats: {
-          total: powerValues.reduce((a, b) => a + b, 0),
-          avg: powerValues.length > 0 ? powerValues.reduce((a, b) => a + b, 0) / powerValues.length : 0,
-          readings: powerReadings,
+          total: power,
+          avg: power,
+          readings: hasFreshData ? [{ timestamp: sl.lastUpdated, value: power }] : [],
         },
         faults: slFaults,
         uptimePercentage,
-        totalOperationalHours: (uptimePercentage / 100) * 84,
-        timeline: generateTimeline(sl.status),
+        totalOperationalHours: hasFreshData ? (weekMs / (60 * 60 * 1000)) : 0,
+        timeline: hasFreshData ? [{ timestamp: sl.lastUpdated, status: sl.status }] : [],
       };
     });
   }, [streetlights, faults]);
