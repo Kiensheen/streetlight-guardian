@@ -342,7 +342,7 @@ export const useSensorData = () => {
       timestamp: fault.detectedAt,
       read: false,
     })));
-  }, [readings]);
+  }, [readings, now]);
 
   const markNotificationAsRead = useCallback((notificationId: string) => {
     setNotifications(prev =>
