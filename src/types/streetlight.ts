@@ -32,6 +32,10 @@ export interface Streetlight {
   ldr: number;                  // Raw LDR value (0-4095)
   hasData?: boolean;            // True if real data was received from Firebase
   online?: boolean;             // True if last update is within freshness window
+  // ESP32-provided derived fields
+  ledStatus?: 'DEGRADED' | 'NOT DEGRADED' | 'NIGHT - NO MOTION' | 'DAYTIME - LED OFF' | string;
+  batteryStatus?: 'NORMAL' | 'DEGRADED' | string;
+  soh?: number; // 0-100 %
 }
 
 export interface Fault {
