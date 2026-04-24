@@ -27,9 +27,11 @@ const DASH = '--';
 const StreetlightCard: React.FC<StreetlightCardProps> = ({ streetlight }) => {
   const hasData = streetlight.hasData ?? false;
   const isOnline = streetlight.online ?? false;
+  // Show live values only when we have data AND the node is currently online
+  const showLive = hasData && isOnline;
 
   // When offline/no-data, neutralize visual health to muted instead of "fault"
-  const effectiveHealth: HealthStatus = hasData ? streetlight.healthStatus : 'healthy';
+  const effectiveHealth: HealthStatus = showLive ? streetlight.healthStatus : 'healthy';
   const status = statusConfig[streetlight.status];
   const health = healthConfig[effectiveHealth];
   const StatusIcon = status.icon;
