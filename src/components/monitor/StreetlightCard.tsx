@@ -178,6 +178,75 @@ const StreetlightCard: React.FC<StreetlightCardProps> = ({ streetlight }) => {
           </div>
         </div>
 
+        {/* ESP32-derived statuses */}
+        {hasData && (streetlight.ledStatus || streetlight.batteryStatus || streetlight.soh !== undefined) && (
+          <div className="grid grid-cols-3 gap-2 pt-2 border-t border-border">
+            <div className="space-y-1">
+              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Battery SoH</p>
+              <div className="flex items-center gap-2">
+                <div className="relative h-8 w-8 shrink-0">
+                  <svg viewBox="0 0 36 36" className="h-8 w-8 -rotate-90">
+                    <circle cx="18" cy="18" r="15" fill="none" className="stroke-muted" strokeWidth="3" />
+                    <circle
+                      cx="18" cy="18" r="15" fill="none" strokeWidth="3" strokeLinecap="round"
+                      className={cn(
+                        (streetlight.soh ?? streetlight.batterySOH) >= 80 ? 'stroke-success'
+                        : (streetlight.soh ?? streetlight.batterySOH) >= 50 ? 'stroke-warning'
+                        : 'stroke-destructive'
+                      )}
+                      strokeDasharray={`${Math.max(0, Math.min(100, streetlight.soh ?? streetlight.batterySOH)) * 0.94} 94`}
+                    />
+                  </svg>
+                </div>
+                <span className="text-sm font-bold tabular-nums">
+                  {(streetlight.soh ?? streetlight.batterySOH).toFixed(0)}%
+                </span>
+              </div>
+              {streetlight.batteryStatus && (
+                <Badge
+                  variant="outline"
+                  className={cn(
+                    "text-[10px]",
+                    streetlight.batteryStatus === 'NORMAL'
+                      ? "bg-success/10 text-success border-success/30"
+                      : "bg-destructive/10 text-destructive border-destructive/30"
+                  )}
+                >
+                  {streetlight.batteryStatus}
+                </Badge>
+              )}
+            </div>
+
+            <div className="space-y-1">
+              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">LED Status</p>
+              <Badge
+                variant="outline"
+                className={cn(
+                  "text-[10px] whitespace-normal text-left",
+                  streetlight.ledStatus === 'NOT DEGRADED' && "bg-success/10 text-success border-success/30",
+                  streetlight.ledStatus === 'DEGRADED' && "bg-destructive/10 text-destructive border-destructive/30",
+                  (streetlight.ledStatus === 'NIGHT - NO MOTION' || streetlight.ledStatus === 'DAYTIME - LED OFF') &&
+                    "bg-warning/10 text-warning border-warning/30",
+                  !streetlight.ledStatus && "bg-muted text-muted-foreground"
+                )}
+              >
+                {streetlight.ledStatus ?? DASH}
+              </Badge>
+            </div>
+
+            <div className="space-y-1">
+              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Active Faults</p>
+              <p className={cn(
+                "text-lg font-bold tabular-nums",
+                (Number(streetlight.ledStatus === 'DEGRADED') + Number(streetlight.batteryStatus === 'DEGRADED') + Number((streetlight.soh ?? 100) < 50)) > 0
+                  ? "text-destructive" : "text-success"
+              )}>
+                {Number(streetlight.ledStatus === 'DEGRADED') + Number(streetlight.batteryStatus === 'DEGRADED') + Number((streetlight.soh ?? 100) < 50)}
+              </p>
+            </div>
+          </div>
+        )}
+
         <div className="pt-2 border-t border-border">
           <p className="text-xs text-muted-foreground">
             {hasData

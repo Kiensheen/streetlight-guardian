@@ -30,6 +30,9 @@ export const useSnapshotWriter = () => {
           lux: Number(v.lux ?? 0),
           ldr: Number(v.ldr ?? 0),
           microwave: Number(v.microwave ?? 0),
+          ledStatus: typeof v.ledStatus === 'string' ? v.ledStatus : null,
+          batteryStatus: typeof v.batteryStatus === 'string' ? v.batteryStatus : null,
+          soh: v.soh != null && !Number.isNaN(Number(v.soh)) ? Number(v.soh) : null,
           timestamp: serverTimestamp(),
           clientTimestamp: Date.now(),
         };

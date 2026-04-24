@@ -49,7 +49,48 @@ const generateFaults = (streetlights: Streetlight[]): Fault[] => {
   const faults: Fault[] = [];
   streetlights.forEach(sl => {
     if (!sl.hasData) return;
+
+    // ESP32-driven faults take priority
+    if (sl.ledStatus === 'DEGRADED') {
+      faults.push({
+        id: `fault-${sl.id}-led`,
+        streetlightId: sl.id,
+        streetlightName: sl.name,
+        type: 'dim_output',
+        severity: 'high',
+        detectedAt: Date.now(),
+        resolved: false,
+        description: `LED Degraded - Bulb replacement needed`,
+      });
+    }
+    if (sl.batteryStatus === 'DEGRADED') {
+      faults.push({
+        id: `fault-${sl.id}-batt`,
+        streetlightId: sl.id,
+        streetlightName: sl.name,
+        type: 'low_battery',
+        severity: 'high',
+        detectedAt: Date.now(),
+        resolved: false,
+        description: `Battery Degraded - Check battery health`,
+      });
+    }
+    if (sl.soh !== undefined && sl.soh < 50 && sl.batteryStatus !== 'DEGRADED') {
+      faults.push({
+        id: `fault-${sl.id}-soh`,
+        streetlightId: sl.id,
+        streetlightName: sl.name,
+        type: 'low_battery',
+        severity: 'medium',
+        detectedAt: Date.now(),
+        resolved: false,
+        description: `Battery State of Health critical (${sl.soh.toFixed(0)}%)`,
+      });
+    }
+
     if (sl.healthStatus === 'healthy') return;
+    if (faults.some(f => f.streetlightId === sl.id)) return; // already added ESP32 faults
+
     let faultType: FaultType = 'off_when_scheduled_on';
     let description = '';
     if (sl.voltage > 0 && sl.voltage < 11.0) {
@@ -77,7 +118,7 @@ const generateFaults = (streetlights: Streetlight[]): Fault[] => {
 };
 
 const mapSnapshotToLight = (
-  v: { voltage?: number; current?: number; power?: number; lux?: number; ldr?: number; microwave?: number; ts?: number },
+  v: { voltage?: number; current?: number; power?: number; lux?: number; ldr?: number; microwave?: number; ts?: number; ledStatus?: string; batteryStatus?: string; soh?: number },
   cfg: { nodeId: string; name: string; location: string }
 ): Streetlight => {
   const voltage = Number(v.voltage ?? 0);
@@ -88,8 +129,15 @@ const mapSnapshotToLight = (
   const motion = Number(v.microwave ?? 0) === 1;
   const tsMs = v.ts ? Number(v.ts) * 1000 : Date.now();
 
+  const ledStatus = typeof v.ledStatus === 'string' ? v.ledStatus : undefined;
+  const batteryStatus = typeof v.batteryStatus === 'string' ? v.batteryStatus : undefined;
+  const soh = v.soh != null && !Number.isNaN(Number(v.soh)) ? Number(v.soh) : undefined;
+
   const status = deriveStatus(currentMa, voltage);
-  const healthStatus = getHealthStatus(status, voltage);
+  // Prefer ESP32-provided statuses for health when available
+  let healthStatus = getHealthStatus(status, voltage);
+  if (ledStatus === 'DEGRADED' || batteryStatus === 'DEGRADED') healthStatus = 'fault';
+  else if (soh !== undefined && soh < 50) healthStatus = healthStatus === 'fault' ? 'fault' : 'warning';
 
   return {
     id: cfg.nodeId,
@@ -101,12 +149,15 @@ const mapSnapshotToLight = (
     current: currentMa,
     power: powerMw,
     lastUpdated: tsMs,
-    batterySOH: estimateBatterySOH(voltage),
+    batterySOH: soh !== undefined ? Math.max(0, Math.min(100, Math.round(soh))) : estimateBatterySOH(voltage),
     luminance: lux,
     motionDetected: motion,
     solarChargingCurrent: 0,
     ldr,
     hasData: true,
+    ledStatus,
+    batteryStatus,
+    soh,
   };
 };
 

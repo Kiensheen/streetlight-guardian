@@ -16,6 +16,9 @@ interface HistoryEntry {
   lux: number;
   ldr: number;
   microwave: number;
+  ledStatus?: string | null;
+  batteryStatus?: string | null;
+  soh?: number | null;
   clientTimestamp: number;
   timestamp?: Timestamp;
 }
@@ -107,28 +110,37 @@ const FirestoreHistoryList: React.FC = () => {
             return (
               <div
                 key={e.id}
-                className="flex items-center justify-between gap-2 p-2.5 rounded-lg bg-muted/40 border border-border/40"
+                className="flex flex-col gap-1.5 p-2.5 rounded-lg bg-muted/40 border border-border/40"
               >
-                <div className="min-w-0 flex-1">
+                <div className="flex items-center justify-between gap-2">
                   <p className="text-xs font-medium truncate">{time}</p>
-                  <div className="flex items-center gap-3 mt-1 text-[11px] text-muted-foreground">
-                    <span className="flex items-center gap-1">
-                      <Zap className="h-3 w-3" />
-                      {e.voltage.toFixed(2)}V
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <Activity className="h-3 w-3" />
-                      {e.current.toFixed(0)} mA
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <Sun className="h-3 w-3" />
-                      {e.lux.toFixed(0)} lx
-                    </span>
-                  </div>
+                  <Badge variant="outline" className="text-[10px] shrink-0">
+                    {e.nodeId}
+                  </Badge>
                 </div>
-                <Badge variant="outline" className="text-[10px] shrink-0">
-                  {e.nodeId}
-                </Badge>
+                <div className="flex items-center flex-wrap gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
+                  <span className="flex items-center gap-1">
+                    <Zap className="h-3 w-3" />
+                    {e.voltage.toFixed(2)}V
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <Activity className="h-3 w-3" />
+                    {e.current.toFixed(0)} mA
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <Sun className="h-3 w-3" />
+                    {e.lux.toFixed(0)} lx
+                  </span>
+                  <span>SoH: {e.soh != null ? `${Number(e.soh).toFixed(0)}%` : '--'}</span>
+                </div>
+                <div className="flex items-center flex-wrap gap-1">
+                  <Badge variant="outline" className="text-[10px]">
+                    LED: {e.ledStatus ?? '--'}
+                  </Badge>
+                  <Badge variant="outline" className="text-[10px]">
+                    Battery: {e.batteryStatus ?? '--'}
+                  </Badge>
+                </div>
               </div>
             );
           })
