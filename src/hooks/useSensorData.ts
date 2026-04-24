@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Streetlight, Fault, Notification, LightStatus, HealthStatus, FaultType } from '@/types/streetlight';
 import { getFirebaseDatabase, ref, onValue, get, ensureFirebaseAuth } from '@/lib/database';
+import { ONLINE_WINDOW_MS, getSensorFreshness, normalizeSensorTimestamp } from '@/lib/sensorFreshness';
 
 const faultTypeLabels: Record<FaultType, string> = {
   off_when_scheduled_on: 'Light Off',
@@ -19,8 +20,6 @@ const NODE_CONFIG: { nodeId: string; path: string | null; name: string; location
   { nodeId: 'node3', path: null, name: 'Streetlight 3', location: 'Main Street South' },
 ];
 
-// Consider a node "Online" only if its last update is within this window.
-const ONLINE_WINDOW_MS = 2 * 60 * 1000; // 2 minutes
 const FRESHNESS_TICK_MS = 30 * 1000; // re-evaluate every 30s
 
 const deriveStatus = (currentMa: number, voltage: number): LightStatus => {
@@ -120,7 +119,7 @@ const generateFaults = (streetlights: Streetlight[]): Fault[] => {
 };
 
 const mapSnapshotToLight = (
-  v: { voltage?: number; current?: number; power?: number; lux?: number; ldr?: number; microwave?: number; ts?: number; ledStatus?: string; batteryStatus?: string; soh?: number },
+  v: { voltage?: number; current?: number; power?: number; lux?: number; ldr?: number; microwave?: number; ts?: number; timestamp?: number; lastUpdated?: number; ledStatus?: string; batteryStatus?: string; soh?: number },
   cfg: { nodeId: string; name: string; location: string }
 ): Streetlight => {
   const voltage = Number(v.voltage ?? 0);
@@ -129,7 +128,7 @@ const mapSnapshotToLight = (
   const lux = Number(v.lux ?? 0);
   const ldr = Number(v.ldr ?? 0);
   const motion = Number(v.microwave ?? 0) === 1;
-  const tsMs = v.ts ? Number(v.ts) * 1000 : Date.now();
+  const tsMs = normalizeSensorTimestamp(v);
 
   const ledStatus = typeof v.ledStatus === 'string' ? v.ledStatus : undefined;
   const batteryStatus = typeof v.batteryStatus === 'string' ? v.batteryStatus : undefined;
@@ -226,7 +225,16 @@ export const useSensorData = () => {
             });
 
             if (initialSnap.exists()) {
-              const light = mapSnapshotToLight(initialSnap.val(), cfg);
+              const rawValue = initialSnap.val();
+              const light = mapSnapshotToLight(rawValue, cfg);
+              const freshness = getSensorFreshness(light.lastUpdated);
+              console.log(`[SensorData] Freshness check for ${cfg.nodeId}`, {
+                path: `/${cfg.path}`,
+                rawTimestamp: rawValue?.timestamp ?? rawValue?.ts ?? rawValue?.lastUpdated ?? null,
+                normalizedTimestamp: light.lastUpdated || null,
+                ageMs: Number.isFinite(freshness.ageMs) ? freshness.ageMs : null,
+                freshness: freshness.isFresh ? 'fresh' : 'stale',
+              });
               console.log(`[SensorData] Initial parsed streetlight for ${cfg.nodeId}`, light);
               setReadings(prev => ({ ...prev, [cfg.nodeId]: light }));
               setIsFirebaseConnected(true);
@@ -260,7 +268,16 @@ export const useSensorData = () => {
                 return;
               }
 
-              const light = mapSnapshotToLight(snapshot.val(), cfg);
+              const rawValue = snapshot.val();
+              const light = mapSnapshotToLight(rawValue, cfg);
+              const freshness = getSensorFreshness(light.lastUpdated);
+              console.log(`[SensorData] Freshness check for ${cfg.nodeId}`, {
+                path: `/${cfg.path}`,
+                rawTimestamp: rawValue?.timestamp ?? rawValue?.ts ?? rawValue?.lastUpdated ?? null,
+                normalizedTimestamp: light.lastUpdated || null,
+                ageMs: Number.isFinite(freshness.ageMs) ? freshness.ageMs : null,
+                freshness: freshness.isFresh ? 'fresh' : 'stale',
+              });
               console.log(`[SensorData] Parsed streetlight for ${cfg.nodeId}`, light);
               setReadings(prev => ({ ...prev, [cfg.nodeId]: light }));
               setIsLoading(false);
@@ -308,7 +325,16 @@ export const useSensorData = () => {
         });
 
         if (snap.exists()) {
-          const light = mapSnapshotToLight(snap.val(), cfg);
+          const rawValue = snap.val();
+          const light = mapSnapshotToLight(rawValue, cfg);
+          const freshness = getSensorFreshness(light.lastUpdated);
+          console.log(`[SensorData] Manual refresh freshness for ${cfg.nodeId}`, {
+            path: `/${cfg.path}`,
+            rawTimestamp: rawValue?.timestamp ?? rawValue?.ts ?? rawValue?.lastUpdated ?? null,
+            normalizedTimestamp: light.lastUpdated || null,
+            ageMs: Number.isFinite(freshness.ageMs) ? freshness.ageMs : null,
+            freshness: freshness.isFresh ? 'fresh' : 'stale',
+          });
           console.log(`[SensorData] Manual refresh parsed light for ${cfg.nodeId}`, light);
           setReadings(prev => ({ ...prev, [cfg.nodeId]: light }));
         } else {
@@ -325,7 +351,14 @@ export const useSensorData = () => {
   const streetlights: Streetlight[] = NODE_CONFIG.map(cfg => {
     const r = readings[cfg.nodeId];
     if (!r) return emptyLight(cfg);
-    const online = r.lastUpdated > 0 && (now - r.lastUpdated) < ONLINE_WINDOW_MS;
+    const freshness = getSensorFreshness(r.lastUpdated, now);
+    const online = freshness.isFresh;
+    console.log('[SensorData] Display freshness decision', {
+      nodeId: cfg.nodeId,
+      lastUpdated: r.lastUpdated || null,
+      ageMs: Number.isFinite(freshness.ageMs) ? freshness.ageMs : null,
+      freshness: online ? 'fresh' : 'stale',
+    });
     return { ...r, online };
   });
 
