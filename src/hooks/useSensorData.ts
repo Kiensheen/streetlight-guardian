@@ -50,6 +50,7 @@ const generateFaults = (streetlights: Streetlight[]): Fault[] => {
   const faults: Fault[] = [];
   streetlights.forEach(sl => {
     if (!sl.hasData) return;
+    if (!sl.online) return; // stale data shouldn't generate live faults
 
     // ESP32-driven faults take priority
     if (sl.ledStatus === 'DEGRADED') {
