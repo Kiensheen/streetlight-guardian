@@ -127,7 +127,7 @@ const StreetlightCard: React.FC<StreetlightCardProps> = ({ streetlight }) => {
               <Battery className="h-3 w-3" />
             </div>
             <p className={cn("text-sm font-bold tabular-nums", batteryColor)}>
-              {showLive ? `${streetlight.batterySOH.toFixed(0)}%` : DASH}
+              {showLive && hasValue(streetlight.batterySOH) ? `${streetlight.batterySOH.toFixed(0)}%` : DASH}
             </p>
             <p className="text-[10px] text-muted-foreground">SoH</p>
           </div>
@@ -137,7 +137,7 @@ const StreetlightCard: React.FC<StreetlightCardProps> = ({ streetlight }) => {
               <Eye className="h-3 w-3" />
             </div>
             <p className="text-sm font-bold tabular-nums">
-              {showLive ? streetlight.luminance.toFixed(0) : DASH}
+              {fmt(streetlight.luminance, 0)}
             </p>
             <p className="text-[10px] text-muted-foreground">Lux</p>
           </div>
@@ -147,10 +147,10 @@ const StreetlightCard: React.FC<StreetlightCardProps> = ({ streetlight }) => {
               <Moon className="h-3 w-3" />
             </div>
             <p className="text-sm font-bold tabular-nums">
-              {showLive ? streetlight.ldr.toFixed(0) : DASH}
+              {fmt(streetlight.ldr, 0)}
             </p>
             <p className="text-[10px] text-muted-foreground">
-              {showLive ? (streetlight.ldr > 1000 ? 'Night' : streetlight.ldr < 500 ? 'Day' : 'Dusk') : '—'}
+              {showLive && hasValue(streetlight.ldr) ? (streetlight.ldr > 1000 ? 'Night' : streetlight.ldr < 500 ? 'Day' : 'Dusk') : '—'}
             </p>
           </div>
 
@@ -159,7 +159,7 @@ const StreetlightCard: React.FC<StreetlightCardProps> = ({ streetlight }) => {
               <Move className="h-3 w-3" />
             </div>
             <p className={cn("text-sm font-bold", !showLive ? 'text-muted-foreground' : streetlight.motionDetected ? 'text-success' : 'text-muted-foreground')}>
-              {showLive ? (streetlight.motionDetected ? 'Yes' : 'No') : DASH}
+              {showLive && streetlight.motionDetected !== undefined ? (streetlight.motionDetected ? 'Yes' : 'No') : DASH}
             </p>
             <p className="text-[10px] text-muted-foreground">Motion</p>
           </div>
