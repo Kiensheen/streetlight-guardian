@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { getFirebaseDatabase, ref, get, ensureFirebaseAuth, getFirebaseFirestore } from '@/lib/database';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 
-// Every 60s, read /sensors and save a snapshot to Firestore `sensor_history`.
+// Every 60s, read /sensorLogs and save a snapshot to Firestore `sensor_history`.
 // Non-blocking: errors only logged, never thrown to the UI.
 export const useSnapshotWriter = () => {
   useEffect(() => {
@@ -16,9 +16,9 @@ export const useSnapshotWriter = () => {
       try {
         await ensureFirebaseAuth();
         if (cancelled) return;
-        const snap = await get(ref(db, 'sensors'));
+        const snap = await get(ref(db, 'sensorLogs'));
         if (!snap.exists()) {
-          console.log('[Snapshot] /sensors empty, skipping');
+          console.log('[Snapshot] /sensorLogs empty, skipping');
           return;
         }
         const v = snap.val() ?? {};

@@ -11,9 +11,9 @@ const faultTypeLabels: Record<FaultType, string> = {
   low_battery: 'Low Battery',
 };
 
-// Only Streetlight 1 has a real ESP32 publishing to /sensors.
+// Only Streetlight 1 has a real ESP32 publishing to /sensorLogs.
 // Streetlights 2 and 3 are placeholders — no Firebase read is performed for them.
-const SENSORS_PATH = 'sensors';
+const SENSORS_PATH = 'sensorLogs';
 const NODE_CONFIG: { nodeId: string; path: string | null; name: string; location: string }[] = [
   { nodeId: 'node1', path: SENSORS_PATH, name: 'Streetlight 1', location: 'Main Street North' },
   { nodeId: 'node2', path: null, name: 'Streetlight 2', location: 'Main Street Center' },
