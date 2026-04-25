@@ -33,7 +33,7 @@ const HistoryList: React.FC = () => {
     ensureFirebaseAuth()
       .then(() => {
         if (cancelled) return;
-        const r = ref(db, 'history');
+        const r = ref(db, 'sensorLogs');
         unsub = onValue(
           r,
           (snap) => {
@@ -44,8 +44,8 @@ const HistoryList: React.FC = () => {
             }
             const val = snap.val() as Record<string, Omit<HistoryEntry, 'key'>>;
             const list: HistoryEntry[] = Object.entries(val)
-              .map(([key, v]) => ({ key, ...v }))
-              .sort((a, b) => (a.timestamp < b.timestamp ? 1 : -1))
+              .map(([key, v]) => ({ key, timestamp: key, ...v }))
+              .sort((a, b) => (a.key < b.key ? 1 : -1))
               .slice(0, 50);
             setEntries(list);
             setLoading(false);
@@ -72,9 +72,9 @@ const HistoryList: React.FC = () => {
       <CardHeader className="pb-3">
         <CardTitle className="flex items-center gap-2 text-sm">
           <HistoryIcon className="h-4 w-4 text-primary" />
-          Snapshot History
+          Sensor Logs
           <Badge variant="outline" className="ml-auto text-xs">
-            Every 60s
+            /sensorLogs
           </Badge>
         </CardTitle>
       </CardHeader>
@@ -87,11 +87,14 @@ const HistoryList: React.FC = () => {
           </>
         ) : entries.length === 0 ? (
           <p className="text-xs text-muted-foreground text-center py-4">
-            No snapshots yet. The first one will appear within a minute.
+            No sensor logs found yet.
           </p>
         ) : (
           entries.map((e) => {
-            const time = new Date(e.timestamp).toLocaleString();
+            const numericKey = Number(e.key);
+            const time = Number.isFinite(numericKey)
+              ? new Date(numericKey >= 1_000_000_000_000 ? numericKey : numericKey * 1000).toLocaleString()
+              : e.key;
             return (
               <div
                 key={e.key}
