@@ -190,35 +190,17 @@ const StreetlightCard: React.FC<StreetlightCardProps> = ({ streetlight }) => {
                 </span>
               </div>
               {streetlight.batteryStatus && (
-                <Badge
-                  variant="outline"
-                  className={cn(
-                    "text-[10px]",
-                    streetlight.batteryStatus === 'NORMAL'
-                      ? "bg-success/10 text-success border-success/30"
-                      : "bg-destructive/10 text-destructive border-destructive/30"
-                  )}
-                >
+                <span className="inline-flex rounded-md border border-border px-2 py-0.5 text-[10px] text-muted-foreground">
                   {streetlight.batteryStatus}
-                </Badge>
+                </span>
               )}
             </div>
 
             <div className="space-y-1">
               <p className="text-[10px] uppercase tracking-wide text-muted-foreground">LED Status</p>
-              <Badge
-                variant="outline"
-                className={cn(
-                  "text-[10px] whitespace-normal text-left",
-                  streetlight.ledStatus === 'NOT DEGRADED' && "bg-success/10 text-success border-success/30",
-                  streetlight.ledStatus === 'DEGRADED' && "bg-destructive/10 text-destructive border-destructive/30",
-                  (streetlight.ledStatus === 'NIGHT - NO MOTION' || streetlight.ledStatus === 'DAYTIME - LED OFF') &&
-                    "bg-warning/10 text-warning border-warning/30",
-                  !streetlight.ledStatus && "bg-muted text-muted-foreground"
-                )}
-              >
+              <span className="inline-flex rounded-md border border-border px-2 py-0.5 text-left text-[10px] text-muted-foreground">
                 {streetlight.ledStatus ?? DASH}
-              </Badge>
+              </span>
             </div>
 
             <div className="space-y-1">
