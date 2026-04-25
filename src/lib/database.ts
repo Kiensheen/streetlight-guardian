@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app';
-import { getDatabase, ref, onValue, get, set, push, Database } from 'firebase/database';
+import { getDatabase, ref, onValue, get, set, push, query, orderByKey, limitToLast, Database } from 'firebase/database';
 import {
   Auth,
   browserLocalPersistence,
@@ -109,4 +109,4 @@ export const ensureFirebaseAuth = (): Promise<void> => {
   return authPromise;
 };
 
-export { ref, onValue, get, set, push };
+export { ref, onValue, get, set, push, query, orderByKey, limitToLast };

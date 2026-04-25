@@ -9,11 +9,11 @@ export const useAnalytics = (streetlights: Streetlight[], faults: Fault[]) => {
 
     return streetlights.map(sl => {
       const slFaults = faults.filter(f => f.streetlightId === sl.id);
-      const hasFreshData = Boolean(sl.hasData && sl.online);
-      const voltage = hasFreshData ? sl.voltage : 0;
-      const current = hasFreshData ? sl.current : 0;
-      const power = hasFreshData ? sl.power : 0;
-      const uptimePercentage = hasFreshData ? 100 : 0;
+      const hasData = Boolean(sl.hasData);
+      const voltage = hasData && Number.isFinite(sl.voltage) ? sl.voltage : 0;
+      const current = hasData && Number.isFinite(sl.current) ? sl.current : 0;
+      const power = hasData && Number.isFinite(sl.power) ? sl.power : 0;
+      const uptimePercentage = hasData ? 100 : 0;
 
       return {
         streetlightId: sl.id,
@@ -23,23 +23,23 @@ export const useAnalytics = (streetlights: Streetlight[], faults: Fault[]) => {
           min: voltage,
           max: voltage,
           avg: voltage,
-          readings: hasFreshData ? [{ timestamp: sl.lastUpdated, value: voltage }] : [],
+          readings: hasData ? [{ timestamp: sl.lastUpdated, value: voltage }] : [],
         },
         currentStats: {
           min: current,
           max: current,
           avg: current,
-          readings: hasFreshData ? [{ timestamp: sl.lastUpdated, value: current }] : [],
+          readings: hasData ? [{ timestamp: sl.lastUpdated, value: current }] : [],
         },
         powerStats: {
           total: power,
           avg: power,
-          readings: hasFreshData ? [{ timestamp: sl.lastUpdated, value: power }] : [],
+          readings: hasData ? [{ timestamp: sl.lastUpdated, value: power }] : [],
         },
         faults: slFaults,
         uptimePercentage,
-        totalOperationalHours: hasFreshData ? (weekMs / (60 * 60 * 1000)) : 0,
-        timeline: hasFreshData ? [{ timestamp: sl.lastUpdated, status: sl.status }] : [],
+        totalOperationalHours: hasData ? (weekMs / (60 * 60 * 1000)) : 0,
+        timeline: hasData ? [{ timestamp: sl.lastUpdated, status: sl.status }] : [],
       };
     });
   }, [streetlights, faults]);
@@ -52,7 +52,7 @@ export const useAnalytics = (streetlights: Streetlight[], faults: Fault[]) => {
     const voltageData = days.map((day, dayIdx) => {
       const data: Record<string, string | number> = { day };
       streetlights.forEach((sl, idx) => {
-        data[`sl${idx + 1}`] = dayIdx === days.length - 1 ? Number(sl.voltage.toFixed(2)) : 0;
+        data[`sl${idx + 1}`] = dayIdx === days.length - 1 && Number.isFinite(sl.voltage) ? Number(sl.voltage.toFixed(2)) : 0;
       });
       return data;
     });
@@ -61,7 +61,7 @@ export const useAnalytics = (streetlights: Streetlight[], faults: Fault[]) => {
       const data: Record<string, string | number> = { day };
       let total = 0;
       streetlights.forEach((sl, idx) => {
-        const p = dayIdx === days.length - 1 ? sl.power : 0;
+        const p = dayIdx === days.length - 1 && Number.isFinite(sl.power) ? sl.power : 0;
         data[`sl${idx + 1}`] = Number(p.toFixed(2));
         total += p;
       });
