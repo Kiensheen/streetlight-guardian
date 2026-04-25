@@ -27,11 +27,11 @@ export interface Streetlight {
   lastUpdated: number;
   batterySOH: number;           // Battery State of Health %
   luminance: number;            // BH1750 lux reading
-  motionDetected: boolean;      // Microwave motion sensor
+  motionDetected?: boolean;     // Microwave motion sensor
   solarChargingCurrent: number; // Solar panel charging current (A)
   ldr: number;                  // Raw LDR value (0-4095)
   hasData?: boolean;            // True if real data was received from Firebase
-  online?: boolean;             // True if last update is within freshness window
+  online?: boolean;
   // ESP32-provided derived fields
   ledStatus?: 'DEGRADED' | 'NOT DEGRADED' | 'NIGHT - NO MOTION' | 'DAYTIME - LED OFF' | string;
   batteryStatus?: 'NORMAL' | 'DEGRADED' | string;
