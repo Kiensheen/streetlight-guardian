@@ -9,19 +9,14 @@ import UptimeChart from '@/components/monitor/UptimeChart';
 import DailySummary from '@/components/monitor/DailySummary';
 import WeeklyAnalysis from '@/components/monitor/WeeklyAnalysis';
 import HistoryList from '@/components/monitor/HistoryList';
-import FirestoreHistoryList from '@/components/monitor/FirestoreHistoryList';
-import FaultsHistoryList from '@/components/monitor/FaultsHistoryList';
 import { useSensorData } from '@/hooks/useSensorData';
 import { useAnalytics } from '@/hooks/useAnalytics';
-import { useSnapshotWriter } from '@/hooks/useSnapshotWriter';
-import { useFaultLogger } from '@/hooks/useFaultLogger';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { Activity, Wifi, WifiOff, LayoutDashboard, BarChart3, History, RefreshCw, AlertTriangle } from 'lucide-react';
+import { Activity, LayoutDashboard, BarChart3, History, RefreshCw, AlertTriangle } from 'lucide-react';
 
 const Monitor: React.FC = () => {
   const [isDarkMode, setIsDarkMode] = useState(() => {
@@ -39,13 +34,11 @@ const Monitor: React.FC = () => {
     unreadCount,
     isLoading,
     isFirebaseConnected,
+    lastSync,
     markNotificationAsRead,
     markAllNotificationsAsRead,
     refresh,
   } = useSensorData();
-
-  useSnapshotWriter();
-  useFaultLogger(streetlights);
 
   const [isRefreshing, setIsRefreshing] = useState(false);
   const handleRefresh = async () => {
@@ -82,10 +75,6 @@ const Monitor: React.FC = () => {
     );
   }
 
-  const healthySL = streetlights.filter(sl => sl.healthStatus === 'healthy').length;
-  const warningSL = streetlights.filter(sl => sl.healthStatus === 'warning').length;
-  const faultSL = streetlights.filter(sl => sl.healthStatus === 'fault').length;
-
   return (
     <div className="min-h-screen bg-background">
       <DashboardHeader
@@ -101,7 +90,7 @@ const Monitor: React.FC = () => {
         {/* Connection Status & Quick Stats */}
         <div className="flex items-center justify-between mb-4">
           <span className="text-xs font-medium text-muted-foreground">
-            {isFirebaseConnected ? 'Live' : 'Offline'}
+            {isFirebaseConnected ? 'Firebase connected' : 'Firebase unavailable'}
           </span>
           
           <div className="flex items-center gap-2">
@@ -171,13 +160,13 @@ const Monitor: React.FC = () => {
                   <div className="flex items-center justify-between p-2.5 rounded-lg bg-muted/50">
                     <span className="text-xs text-muted-foreground">Source</span>
                     <span className="text-xs font-medium">
-                      {isFirebaseConnected ? 'ESP32 → Firebase' : 'Firebase (last known)'}
+                      Realtime Database /sensorLogs
                     </span>
                   </div>
                   <div className="flex items-center justify-between p-2.5 rounded-lg bg-muted/50">
                     <span className="text-xs text-muted-foreground">Last Sync</span>
                     <span className="text-xs font-medium">
-                      {new Date().toLocaleTimeString()}
+                      {lastSync ? new Date(lastSync).toLocaleTimeString() : '--'}
                     </span>
                   </div>
                 </div>
@@ -193,14 +182,13 @@ const Monitor: React.FC = () => {
           </TabsContent>
 
           <TabsContent value="history" className="space-y-4">
-            <FirestoreHistoryList />
             <HistoryList />
             <DailySummary streetlights={streetlights} />
             <WeeklyAnalysis streetlights={streetlights} />
           </TabsContent>
 
           <TabsContent value="faults" className="space-y-4">
-            <FaultsHistoryList />
+            <FaultsList faults={faults} />
           </TabsContent>
         </Tabs>
       </main>
