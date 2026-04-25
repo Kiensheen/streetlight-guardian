@@ -9,8 +9,10 @@ import UptimeChart from '@/components/monitor/UptimeChart';
 import DailySummary from '@/components/monitor/DailySummary';
 import WeeklyAnalysis from '@/components/monitor/WeeklyAnalysis';
 import HistoryList from '@/components/monitor/HistoryList';
+import FirestoreFaultsPanel from '@/components/monitor/FirestoreFaultsPanel';
 import { useSensorData } from '@/hooks/useSensorData';
 import { useAnalytics } from '@/hooks/useAnalytics';
+import { useFirestoreSensorSync } from '@/hooks/useFirestoreMonitoring';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -47,6 +49,7 @@ const Monitor: React.FC = () => {
   };
 
   const { chartData } = useAnalytics(streetlights, faults);
+  const { isSyncing, lastSyncedAt: firestoreSyncedAt } = useFirestoreSensorSync();
 
   useEffect(() => {
     if (isDarkMode) {
@@ -169,6 +172,16 @@ const Monitor: React.FC = () => {
                       {lastSync ? new Date(lastSync).toLocaleTimeString() : '--'}
                     </span>
                   </div>
+                  <div className="flex items-center justify-between p-2.5 rounded-lg bg-muted/50">
+                    <span className="text-xs text-muted-foreground">Firestore Sync</span>
+                    <span className="text-xs font-medium">
+                      {isSyncing
+                        ? 'Syncing...'
+                        : firestoreSyncedAt
+                          ? new Date(firestoreSyncedAt).toLocaleTimeString()
+                          : '--'}
+                    </span>
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -189,6 +202,7 @@ const Monitor: React.FC = () => {
 
           <TabsContent value="faults" className="space-y-4">
             <FaultsList faults={faults} />
+            <FirestoreFaultsPanel />
           </TabsContent>
         </Tabs>
       </main>

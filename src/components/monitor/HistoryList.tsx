@@ -7,7 +7,9 @@ import { getFirebaseDatabase, ref, onValue, ensureFirebaseAuth } from '@/lib/dat
 
 interface HistoryEntry {
   key: string;
-  timestamp: string;
+  timestampLabel: string;
+  timestampMs: number;
+  timeMillis: number | null;
   voltage: number;
   current: number;
   power: number;
@@ -15,6 +17,25 @@ interface HistoryEntry {
   ldr: number;
   microwave: number;
 }
+
+const toFiniteNumber = (value: unknown): number => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : Number.NaN;
+};
+
+const estimateTimestampFromLog = (value: Record<string, unknown>, key: string): number => {
+  const timeMillis = toFiniteNumber(value.timeMillis);
+  if (Number.isFinite(timeMillis) && timeMillis >= 0) {
+    return Math.max(0, Date.now() - timeMillis);
+  }
+
+  const keyNum = Number(key);
+  if (Number.isFinite(keyNum) && keyNum > 0) {
+    return keyNum >= 1_000_000_000_000 ? keyNum : keyNum * 1000;
+  }
+
+  return Date.now();
+};
 
 const HistoryList: React.FC = () => {
   const [entries, setEntries] = useState<HistoryEntry[]>([]);
@@ -42,11 +63,37 @@ const HistoryList: React.FC = () => {
               setLoading(false);
               return;
             }
-            const val = snap.val() as Record<string, Omit<HistoryEntry, 'key'>>;
+            const val = snap.val() as Record<string, Record<string, unknown>>;
             const list: HistoryEntry[] = Object.entries(val)
-              .map(([key, v]) => ({ key, timestamp: key, ...v }))
-              .sort((a, b) => (a.key < b.key ? 1 : -1))
+              .map(([key, v]) => {
+                const timestampMs = estimateTimestampFromLog(v, key);
+                const timeMillis = toFiniteNumber(v.timeMillis);
+                return {
+                  key,
+                  timestampMs,
+                  timestampLabel: new Date(timestampMs).toLocaleString(undefined, {
+                    month: 'short',
+                    day: '2-digit',
+                    year: 'numeric',
+                    hour: 'numeric',
+                    minute: '2-digit',
+                    second: '2-digit',
+                  }),
+                  timeMillis: Number.isFinite(timeMillis) ? timeMillis : null,
+                  voltage: toFiniteNumber(v.voltage),
+                  current: toFiniteNumber(v.current),
+                  power: toFiniteNumber(v.power),
+                  lux: toFiniteNumber(v.lux),
+                  ldr: toFiniteNumber(v.ldr),
+                  microwave: toFiniteNumber(v.motion ?? v.microwave),
+                };
+              })
+              .sort((a, b) => b.timestampMs - a.timestampMs)
               .slice(0, 50);
+            console.log('[HistoryList] Loaded latest history entries', {
+              count: list.length,
+              first: list[0],
+            });
             setEntries(list);
             setLoading(false);
           },
@@ -91,30 +138,27 @@ const HistoryList: React.FC = () => {
           </p>
         ) : (
           entries.map((e) => {
-            const numericKey = Number(e.key);
-            const time = Number.isFinite(numericKey)
-              ? new Date(numericKey >= 1_000_000_000_000 ? numericKey : numericKey * 1000).toLocaleString()
-              : e.key;
             return (
               <div
                 key={e.key}
                 className="flex items-center justify-between gap-2 p-2.5 rounded-lg bg-muted/40 border border-border/40"
               >
                 <div className="min-w-0 flex-1">
-                  <p className="text-xs font-medium truncate">{time}</p>
+                  <p className="text-xs font-medium truncate">{e.timestampLabel}</p>
                   <div className="flex items-center gap-3 mt-1 text-[11px] text-muted-foreground">
                     <span className="flex items-center gap-1">
                       <Zap className="h-3 w-3" />
-                      {e.voltage.toFixed(2)}V
+                      {Number.isFinite(e.voltage) ? `${e.voltage.toFixed(2)}V` : '--'}
                     </span>
                     <span className="flex items-center gap-1">
                       <Sun className="h-3 w-3" />
-                      {e.lux.toFixed(0)} lx
+                      {Number.isFinite(e.lux) ? `${e.lux.toFixed(0)} lx` : '--'}
                     </span>
                     <span className="flex items-center gap-1">
                       <Move className="h-3 w-3" />
-                      {e.microwave === 1 ? 'Yes' : 'No'}
+                      {Number.isFinite(e.microwave) ? (e.microwave === 1 ? 'Yes' : 'No') : '--'}
                     </span>
+                    <span>timeMillis: {e.timeMillis ?? '--'}</span>
                   </div>
                 </div>
               </div>

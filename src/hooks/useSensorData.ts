@@ -24,9 +24,12 @@ type SensorLogValue = {
   lux?: number | string | null;
   ldr?: number | string | null;
   microwave?: number | string | null;
+  motion?: number | string | boolean | null;
   ledStatus?: string | null;
   batteryStatus?: string | null;
   soh?: number | string | null;
+  timeMillis?: number | string | null;
+  timeStamp?: string | number | null;
 };
 
 const toNumberOrNaN = (value: unknown): number => {
@@ -62,11 +65,24 @@ const getHealthStatus = (status: LightStatus, voltage: number): HealthStatus => 
   }
 };
 
+const toSortableTimestamp = (key: string, value: unknown): number => {
+  const raw = value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
+  const keyNumeric = Number(key);
+  if (Number.isFinite(keyNumeric) && keyNumeric > 0) {
+    return keyNumeric >= 1_000_000_000_000 ? keyNumeric : keyNumeric * 1000;
+  }
+  const millis = Number(raw.timeMillis);
+  if (Number.isFinite(millis) && millis >= 0) {
+    return Date.now() - millis;
+  }
+  return 0;
+};
+
 const getLatestSensorLog = (snapshotValue: unknown): { key: string | null; value: SensorLogValue | null } => {
   if (!snapshotValue || typeof snapshotValue !== 'object') return { key: null, value: null };
 
   const record = snapshotValue as Record<string, unknown>;
-  const directFieldNames = ['voltage', 'current', 'power', 'lux', 'ldr', 'microwave', 'ledStatus', 'batteryStatus', 'soh'];
+  const directFieldNames = ['voltage', 'current', 'power', 'lux', 'ldr', 'microwave', 'motion', 'ledStatus', 'batteryStatus', 'soh', 'timeMillis', 'timeStamp'];
   if (directFieldNames.some(field => field in record)) {
     return { key: null, value: record as SensorLogValue };
   }
@@ -74,7 +90,8 @@ const getLatestSensorLog = (snapshotValue: unknown): { key: string | null; value
   const entries = Object.entries(record).filter(([, value]) => value && typeof value === 'object');
   if (entries.length === 0) return { key: null, value: null };
 
-  const [key, value] = entries[entries.length - 1];
+  entries.sort((a, b) => toSortableTimestamp(b[0], b[1]) - toSortableTimestamp(a[0], a[1]));
+  const [key, value] = entries[0];
   return { key, value: value as SensorLogValue };
 };
 
@@ -83,6 +100,14 @@ const parseKeyTimestamp = (key: string | null): number => {
   const numeric = Number(key);
   if (!Number.isFinite(numeric) || numeric <= 0) return Date.now();
   return numeric >= 1_000_000_000_000 ? numeric : numeric * 1000;
+};
+
+const estimateLogTimestamp = (key: string | null, value: SensorLogValue): number => {
+  const millisSinceBoot = Number(value.timeMillis);
+  if (Number.isFinite(millisSinceBoot) && millisSinceBoot >= 0) {
+    return Math.max(0, Date.now() - millisSinceBoot);
+  }
+  return parseKeyTimestamp(key);
 };
 
 const generateFaults = (streetlights: Streetlight[]): Fault[] => {
@@ -166,7 +191,7 @@ const mapSnapshotToLight = (
   const powerMw = toNumberOrNaN(v.power);
   const lux = toNumberOrNaN(v.lux);
   const ldr = toNumberOrNaN(v.ldr);
-  const microwave = toNumberOrNaN(v.microwave);
+  const microwave = toNumberOrNaN(v.motion ?? v.microwave);
   const motion = hasNumber(microwave) ? microwave === 1 : undefined;
 
   const ledStatus = typeof v.ledStatus === 'string' ? v.ledStatus : undefined;
@@ -187,7 +212,7 @@ const mapSnapshotToLight = (
     voltage,
     current: currentMa,
     power: powerMw,
-    lastUpdated: parseKeyTimestamp(logKey),
+    lastUpdated: estimateLogTimestamp(logKey, v),
     batterySOH: soh !== undefined ? Math.max(0, Math.min(100, Math.round(soh))) : estimateBatterySOH(voltage),
     luminance: lux,
     motionDetected: motion,
