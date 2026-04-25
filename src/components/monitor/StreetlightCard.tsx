@@ -1,8 +1,7 @@
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { Streetlight, LightStatus, HealthStatus } from '@/types/streetlight';
-import { Lightbulb, Zap, Activity, Power, MapPin, Battery, Eye, Move, Moon, Wifi, WifiOff } from 'lucide-react';
+import { Lightbulb, Zap, Activity, Power, MapPin, Battery, Eye, Move, Moon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface StreetlightCardProps {
@@ -23,14 +22,12 @@ const healthConfig: Record<HealthStatus, { color: string; bgColor: string; ringC
 };
 
 const DASH = '--';
+const hasValue = (n: number | undefined) => typeof n === 'number' && Number.isFinite(n);
 
 const StreetlightCard: React.FC<StreetlightCardProps> = ({ streetlight }) => {
   const hasData = streetlight.hasData ?? false;
-  const isOnline = streetlight.online ?? false;
-  // Show live values only when we have data AND the node is currently online
-  const showLive = hasData && isOnline;
+  const showLive = hasData;
 
-  // When offline/no-data, neutralize visual health to muted instead of "fault"
   const effectiveHealth: HealthStatus = showLive ? streetlight.healthStatus : 'healthy';
   const status = statusConfig[streetlight.status];
   const health = healthConfig[effectiveHealth];
@@ -42,7 +39,7 @@ const StreetlightCard: React.FC<StreetlightCardProps> = ({ streetlight }) => {
     : streetlight.batterySOH >= 50 ? 'text-warning'
     : 'text-destructive';
 
-  const fmt = (n: number, digits = 1) => showLive ? n.toFixed(digits) : DASH;
+  const fmt = (n: number, digits = 1) => showLive && hasValue(n) ? n.toFixed(digits) : DASH;
 
   return (
     <Card className={cn(
@@ -75,9 +72,6 @@ const StreetlightCard: React.FC<StreetlightCardProps> = ({ streetlight }) => {
               )}
             </div>
           </div>
-          <span className="text-xs font-medium text-muted-foreground">
-            {isOnline ? 'Online' : 'Offline'}
-          </span>
         </div>
       </CardHeader>
 
@@ -86,14 +80,6 @@ const StreetlightCard: React.FC<StreetlightCardProps> = ({ streetlight }) => {
           <div className="rounded-lg border border-dashed border-border bg-muted/30 px-3 py-2 text-center">
             <p className="text-xs font-medium text-muted-foreground">
               Waiting for first transmission
-            </p>
-          </div>
-        )}
-
-        {hasData && !isOnline && (
-          <div className="rounded-lg border border-dashed border-border bg-muted/30 px-3 py-2 text-center">
-            <p className="text-xs font-medium text-muted-foreground">
-              Last seen: {new Date(streetlight.lastUpdated).toLocaleString()}
             </p>
           </div>
         )}
