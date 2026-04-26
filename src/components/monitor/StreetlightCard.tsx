@@ -122,14 +122,7 @@ const StreetlightCard: React.FC<StreetlightCardProps> = ({ streetlight }) => {
         </div>
 
         {/* Secondary metrics */}
-        <div className="grid grid-cols-4 gap-2">
-          <div className="space-y-1 text-center">
-            <p className="text-sm font-bold tabular-nums">
-              {showLive && hasValue(streetlight.batterySOH) ? `SoH: ${streetlight.batterySOH.toFixed(0)}%` : `SoH: ${DASH}`}
-            </p>
-            <p className="text-[10px] text-muted-foreground">SoH</p>
-          </div>
-
+        <div className="grid grid-cols-3 gap-2">
           <div className="space-y-1 text-center">
             <div className="flex items-center justify-center gap-1 text-muted-foreground">
               <Eye className="h-3 w-3" />
