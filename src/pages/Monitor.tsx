@@ -39,6 +39,7 @@ const Monitor: React.FC = () => {
     lastSync,
     markNotificationAsRead,
     markAllNotificationsAsRead,
+    resolveFault,
     refresh,
   } = useSensorData();
 
@@ -146,10 +147,7 @@ const Monitor: React.FC = () => {
                 <StreetlightCard key={streetlight.id} streetlight={streetlight} />
               ))}
             </div>
-            
-            {/* Active Faults */}
-            <FaultsList faults={faults} />
-            
+
             {/* System Status */}
             <Card className="border-border/50">
               <CardContent className="p-4">
@@ -214,7 +212,11 @@ const Monitor: React.FC = () => {
                 <SelectItem value="node2">Streetlight 2</SelectItem>
               </SelectContent>
             </Select>
-            <FaultsList faults={filteredFaults} />
+            <FaultsList
+              faults={filteredFaults}
+              onResolveFault={resolveFault}
+              showResolveAction
+            />
           </TabsContent>
         </Tabs>
       </main>

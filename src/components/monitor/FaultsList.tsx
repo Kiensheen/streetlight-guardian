@@ -2,12 +2,15 @@
  import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
  import { Badge } from '@/components/ui/badge';
  import { ScrollArea } from '@/components/ui/scroll-area';
+import { Button } from '@/components/ui/button';
  import { Fault, FaultSeverity, FaultType } from '@/types/streetlight';
  import { AlertTriangle, Clock } from 'lucide-react';
  import { cn } from '@/lib/utils';
  
  interface FaultsListProps {
    faults: Fault[];
+  onResolveFault?: (faultId: string) => void;
+  showResolveAction?: boolean;
  }
  
  const severityConfig: Record<FaultSeverity, { label: string; className: string }> = {
@@ -24,7 +27,7 @@ const faultTypeLabels: Record<FaultType, string> = {
   low_battery: 'Battery Faulty',
 };
  
- const FaultsList: React.FC<FaultsListProps> = ({ faults }) => {
+ const FaultsList: React.FC<FaultsListProps> = ({ faults, onResolveFault, showResolveAction = false }) => {
    const activeFaults = faults.filter(f => !f.resolved);
  
    return (
@@ -87,6 +90,19 @@ const faultTypeLabels: Record<FaultType, string> = {
                         Detected: {fault.detectedAt > 0 ? new Date(fault.detectedAt).toLocaleString() : '--'}
                        </span>
                      </div>
+                    {showResolveAction && onResolveFault ? (
+                      <div className="mt-3 flex justify-end">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="h-7 px-2 text-xs"
+                          onClick={() => onResolveFault(fault.id)}
+                        >
+                          Resolve
+                        </Button>
+                      </div>
+                    ) : null}
                    </div>
                  );
                })}

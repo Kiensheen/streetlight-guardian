@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Streetlight, Fault, Notification, LightStatus, HealthStatus, FaultType } from '@/types/streetlight';
 import { getFirebaseDatabase, ref, onValue, ensureFirebaseAuth } from '@/lib/database';
 
@@ -259,11 +259,15 @@ const emptyLight = (cfg: { nodeId: string; name: string; location: string }): St
 
 export const useSensorData = () => {
   const [readings, setReadings] = useState<Record<string, Streetlight>>({});
+  const [resolvedFaultIds, setResolvedFaultIds] = useState<Set<string>>(new Set());
   const [faults, setFaults] = useState<Fault[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isFirebaseConnected, setIsFirebaseConnected] = useState(false);
   const [lastSync, setLastSync] = useState<number | null>(null);
+  const previousActiveFaultIdsRef = useRef<Set<string>>(new Set());
+  const activeBrowserNotificationsRef = useRef<Map<string, globalThis.Notification>>(new Map());
+  const supportsBrowserNotifications = typeof window !== 'undefined' && 'Notification' in window;
 
   const subscribeLatestReadings = useCallback(async () => {
     const database = getFirebaseDatabase();
@@ -350,9 +354,43 @@ export const useSensorData = () => {
   const streetlights: Streetlight[] = NODE_CONFIG.map(cfg => readings[cfg.nodeId] ?? emptyLight(cfg));
 
   useEffect(() => {
-    const newFaults = generateFaults(streetlights);
-    setFaults(newFaults);
-    setNotifications(newFaults.map(fault => ({
+    const generatedFaults = generateFaults(streetlights);
+    const generatedFaultIds = new Set(generatedFaults.map((fault) => fault.id));
+    const staleResolvedIds = Array.from(resolvedFaultIds).filter((faultId) => !generatedFaultIds.has(faultId));
+    if (staleResolvedIds.length > 0) {
+      setResolvedFaultIds((prev) => {
+        const next = new Set(prev);
+        staleResolvedIds.forEach((faultId) => next.delete(faultId));
+        return next;
+      });
+    }
+
+    const activeFaults = generatedFaults.filter((fault) => !resolvedFaultIds.has(fault.id));
+    const activeFaultIds = new Set(activeFaults.map((fault) => fault.id));
+
+    if (supportsBrowserNotifications && Notification.permission === 'granted') {
+      activeFaults.forEach((fault) => {
+        if (previousActiveFaultIdsRef.current.has(fault.id)) return;
+        const notification = new Notification('New Fault Detected', {
+          body: `${fault.streetlightName} - ${faultTypeLabels[fault.type]}`,
+          icon: '/vite.svg',
+          tag: fault.id,
+        });
+        activeBrowserNotificationsRef.current.set(fault.id, notification);
+      });
+    }
+
+    previousActiveFaultIdsRef.current.forEach((faultId) => {
+      if (activeFaultIds.has(faultId)) return;
+      const activeNotification = activeBrowserNotificationsRef.current.get(faultId);
+      activeNotification?.close();
+      activeBrowserNotificationsRef.current.delete(faultId);
+    });
+
+    previousActiveFaultIdsRef.current = activeFaultIds;
+
+    setFaults(activeFaults);
+    setNotifications(activeFaults.map(fault => ({
       id: `notif-${fault.id}`,
       faultId: fault.id,
       streetlightId: fault.streetlightId,
@@ -362,7 +400,17 @@ export const useSensorData = () => {
       timestamp: fault.detectedAt,
       read: false,
     })));
-  }, [readings]);
+  }, [resolvedFaultIds, streetlights, supportsBrowserNotifications]);
+
+  useEffect(() => {
+    if (!supportsBrowserNotifications) return;
+    const hasPromptedBefore = localStorage.getItem('fault-notification-permission-requested') === 'true';
+    if (Notification.permission === 'default' && !hasPromptedBefore) {
+      Notification.requestPermission().finally(() => {
+        localStorage.setItem('fault-notification-permission-requested', 'true');
+      });
+    }
+  }, [supportsBrowserNotifications]);
 
   const markNotificationAsRead = useCallback((notificationId: string) => {
     setNotifications(prev =>
@@ -372,6 +420,20 @@ export const useSensorData = () => {
 
   const markAllNotificationsAsRead = useCallback(() => {
     setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+  }, []);
+
+  const resolveFault = useCallback((faultId: string) => {
+    setResolvedFaultIds((prev) => {
+      if (prev.has(faultId)) return prev;
+      const next = new Set(prev);
+      next.add(faultId);
+      return next;
+    });
+
+    const activeNotification = activeBrowserNotificationsRef.current.get(faultId);
+    activeNotification?.close();
+    activeBrowserNotificationsRef.current.delete(faultId);
+    previousActiveFaultIdsRef.current.delete(faultId);
   }, []);
 
   const unreadCount = notifications.filter(n => !n.read).length;
@@ -386,6 +448,7 @@ export const useSensorData = () => {
     lastSync,
     markNotificationAsRead,
     markAllNotificationsAsRead,
+    resolveFault,
     refresh,
   };
 };
