@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { getFirebaseFirestore } from '@/lib/database';
-import { collection, onSnapshot, orderBy, query } from 'firebase/firestore';
+import { collection, doc, onSnapshot, orderBy, query, updateDoc } from 'firebase/firestore';
 
 export type FirestoreFaultFilter = 'all' | 'unresolved' | 'resolved';
 export type FirestoreFaultType = 'LOW_VOLTAGE' | 'BULB_FAILURE' | 'LOW_LIGHT_OUTPUT';
@@ -125,7 +125,7 @@ export const useFirestoreHistory = () => {
       return;
     }
 
-    const q = query(collection(fs, HISTORY_COLLECTION_PATH), orderBy('__name__', 'desc'));
+    const q = query(collection(fs, HISTORY_COLLECTION_PATH), orderBy('Time', 'desc'));
     const unsub = onSnapshot(
       q,
       (snapshot) => {
@@ -170,6 +170,7 @@ export const useFirestoreFaults = (filter: FirestoreFaultFilter) => {
   const [existingFaults, setExistingFaults] = useState<FirestoreFault[]>([]);
   const [faults, setFaults] = useState<FirestoreFault[]>([]);
   const [faultsLoading, setFaultsLoading] = useState(true);
+  const [locallyResolvedIds, setLocallyResolvedIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     const fs = getFirebaseFirestore();
@@ -185,7 +186,7 @@ export const useFirestoreFaults = (filter: FirestoreFaultFilter) => {
         const next = snapshot.docs.map((docSnap) => {
           const data = docSnap.data() as Record<string, unknown>;
           const rawTime = typeof data.Time === 'string' ? data.Time : null;
-          const parsedTs = rawTime ? parseEspTimeToMs(rawTime) ?? 0 : toNumber(data.timestamp);
+          const parsedTs = rawTime ? parseEspTimeToMs(rawTime) ?? 0 : 0;
           const timestamp = Number.isFinite(parsedTs) ? parsedTs : 0;
           const resolvedAt = toNumber(data.resolvedAt);
           return {
@@ -215,17 +216,40 @@ export const useFirestoreFaults = (filter: FirestoreFaultFilter) => {
   useEffect(() => {
     const derived = deriveFaultsFromHistory(entries);
     if (existingFaults.length === 0) {
-      setFaults(derived);
+      setFaults(derived.map((fault) => ({
+        ...fault,
+        resolved: locallyResolvedIds.has(fault.id),
+      })));
       return;
     }
 
-    const resolvedByKey = new Map(existingFaults.map((f) => [`${f.sensorKey}_${f.type}`, f.resolved]));
+    const resolvedByKey = new Map(existingFaults.map((f) => [f.id, f.resolved]));
     const merged = derived.map((f) => ({
       ...f,
-      resolved: resolvedByKey.get(`${f.sensorKey}_${f.type}`) ?? false,
+      resolved: resolvedByKey.get(f.id) ?? locallyResolvedIds.has(f.id),
     }));
     setFaults(merged);
-  }, [entries, existingFaults]);
+  }, [entries, existingFaults, locallyResolvedIds]);
+
+  const resolveFault = useCallback(async (faultId: string) => {
+    setLocallyResolvedIds((prev) => {
+      const next = new Set(prev);
+      next.add(faultId);
+      return next;
+    });
+
+    const fs = getFirebaseFirestore();
+    if (!fs) return;
+    const existsInFirestore = existingFaults.some((f) => f.id === faultId);
+    if (!existsInFirestore) return;
+    try {
+      await updateDoc(doc(fs, 'faults', faultId), {
+        resolved: true,
+      });
+    } catch (error) {
+      console.error('[FirestoreFaults] Failed to resolve fault', error);
+    }
+  }, [existingFaults]);
 
   const filteredFaults = useMemo(() => {
     if (filter === 'resolved') return faults.filter((fault) => fault.resolved);
@@ -233,5 +257,5 @@ export const useFirestoreFaults = (filter: FirestoreFaultFilter) => {
     return faults;
   }, [faults, filter]);
 
-  return { faults: filteredFaults, loading: historyLoading || faultsLoading };
+  return { faults: filteredFaults, loading: historyLoading || faultsLoading, resolveFault };
 };

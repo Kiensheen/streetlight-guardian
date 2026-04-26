@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { AlertTriangle, Clock } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Clock } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -24,7 +24,7 @@ const faultLabel = (type: FirestoreFault['type']): string => {
 
 const FirestoreFaultsPanel: React.FC = () => {
   const [filter, setFilter] = useState<FirestoreFaultFilter>('all');
-  const { faults, loading } = useFirestoreFaults(filter);
+  const { faults, loading, resolveFault } = useFirestoreFaults(filter);
   const unresolvedCount = useMemo(
     () => faults.filter((fault) => !fault.resolved).length,
     [faults]
@@ -89,6 +89,17 @@ const FirestoreFaultsPanel: React.FC = () => {
                   </span>
                 </div>
               </div>
+              {!fault.resolved && (
+                <Button
+                  type="button"
+                  size="sm"
+                  className="h-8 shrink-0"
+                  onClick={() => resolveFault(fault.id)}
+                >
+                  <CheckCircle2 className="h-3.5 w-3.5 mr-1" />
+                  Resolve
+                </Button>
+              )}
             </div>
           ))
         )}

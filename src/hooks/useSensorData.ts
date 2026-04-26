@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Streetlight, Fault, Notification, LightStatus, HealthStatus, FaultType } from '@/types/streetlight';
-import { getFirebaseDatabase, ref, get, ensureFirebaseAuth } from '@/lib/database';
+import { getFirebaseDatabase, ref, onValue, ensureFirebaseAuth } from '@/lib/database';
 
 const faultTypeLabels: Record<FaultType, string> = {
   off_when_scheduled_on: 'Light Off',
@@ -108,10 +108,7 @@ const getLatestSensorLog = (snapshotValue: unknown): { key: string | null; value
 const estimateLogTimestamp = (key: string | null, value: SensorLogValue): number => {
   const parsedTime = parseEspTimeToMs(value.Time);
   if (parsedTime !== null) return parsedTime;
-  if (!key) return 0;
-  const numeric = Number(key);
-  if (!Number.isFinite(numeric) || numeric <= 0) return 0;
-  return numeric >= 1_000_000_000_000 ? numeric : numeric * 1000;
+  return 0;
 };
 
 const generateFaults = (streetlights: Streetlight[]): Fault[] => {
@@ -256,75 +253,87 @@ export const useSensorData = () => {
   const [isFirebaseConnected, setIsFirebaseConnected] = useState(false);
   const [lastSync, setLastSync] = useState<number | null>(null);
 
-  const loadLatestReadings = useCallback(async () => {
+  const subscribeLatestReadings = useCallback(async () => {
     const database = getFirebaseDatabase();
     if (!database) {
       console.error('[SensorData] Firebase database is not initialized');
       setIsFirebaseConnected(false);
-      return;
+      return [] as Array<() => void>;
     }
 
     await ensureFirebaseAuth();
-    console.log('[SensorData] Loading latest Realtime Database entries', {
+    console.log('[SensorData] Subscribing to Realtime Database entries', {
       nodePaths: NODE_CONFIG.map(({ nodeId, path }) => ({ nodeId, path })),
     });
 
-    await Promise.all(NODE_CONFIG.map(async (cfg) => {
+    const unsubscribers: Array<() => void> = [];
+    NODE_CONFIG.forEach((cfg) => {
       if (!cfg.path) return;
 
-      const snap = await get(ref(database, cfg.path));
-      console.log(`[SensorData] Latest read for ${cfg.nodeId}`, {
-        path: `/${cfg.path}`,
-        exists: snap.exists(),
-        value: snap.val(),
-      });
+      const unsubscribe = onValue(
+        ref(database, cfg.path),
+        (snap) => {
+          console.log(`[SensorData] Live update for ${cfg.nodeId}`, {
+            path: `/${cfg.path}`,
+            exists: snap.exists(),
+          });
+          if (!snap.exists()) {
+            setReadings(prev => ({ ...prev, [cfg.nodeId]: emptyLight(cfg) }));
+            setIsFirebaseConnected(false);
+            setLastSync(null);
+            return;
+          }
 
-      if (!snap.exists()) {
-        console.warn(`[SensorData] No data found at /${cfg.path}`);
-        return;
-      }
+          const { key, value } = getLatestSensorLog(snap.val());
+          if (!value) return;
+          const light = mapSnapshotToLight(value, cfg, key);
+          setReadings(prev => ({ ...prev, [cfg.nodeId]: light }));
+          setIsFirebaseConnected(true);
+          setLastSync(light.lastUpdated > 0 ? light.lastUpdated : null);
+          setIsLoading(false);
+        },
+        (err) => {
+          console.error(`[SensorData] Listener failed for /${cfg.path}`, err);
+          setIsFirebaseConnected(false);
+          setIsLoading(false);
+        }
+      );
+      unsubscribers.push(unsubscribe);
+    });
 
-      const { key, value } = getLatestSensorLog(snap.val());
-      console.log(`[SensorData] Latest /${cfg.path} entry for ${cfg.nodeId}`, { key, value });
-      if (!value) return;
-
-      const light = mapSnapshotToLight(value, cfg, key);
-      console.log(`[SensorData] Parsed streetlight for ${cfg.nodeId}`, light);
-      setReadings(prev => ({ ...prev, [cfg.nodeId]: light }));
-    }));
-
-    setIsFirebaseConnected(true);
-    setLastSync(Date.now());
+    return unsubscribers;
   }, []);
 
   useEffect(() => {
     let cancelled = false;
+    let unsubscribers: Array<() => void> = [];
 
-    loadLatestReadings()
+    subscribeLatestReadings()
+      .then((unsubs) => {
+        if (cancelled) {
+          unsubs.forEach((fn) => fn());
+          return;
+        }
+        unsubscribers = unsubs;
+      })
       .catch((err) => {
         if (!cancelled) {
-          console.error('[SensorData] Initial load failed:', err);
+          console.error('[SensorData] Realtime subscription failed:', err);
           setIsFirebaseConnected(false);
+          setIsLoading(false);
         }
-      })
-      .finally(() => {
-        if (!cancelled) setIsLoading(false);
       });
 
     return () => {
       cancelled = true;
+      unsubscribers.forEach((fn) => fn());
     };
-  }, [loadLatestReadings]);
+  }, [subscribeLatestReadings]);
 
   const refresh = useCallback(async () => {
-    try {
-      console.log('[SensorData] Manual refresh started');
-      await loadLatestReadings();
-    } catch (e) {
-      console.error('[SensorData] Manual refresh failed:', e);
-      setIsFirebaseConnected(false);
-    }
-  }, [loadLatestReadings]);
+    // Realtime listeners auto-refresh data. Keep this for UI compatibility.
+    console.log('[SensorData] Manual refresh requested - realtime listener is active');
+  }, []);
 
   const streetlights: Streetlight[] = NODE_CONFIG.map(cfg => readings[cfg.nodeId] ?? emptyLight(cfg));
 
