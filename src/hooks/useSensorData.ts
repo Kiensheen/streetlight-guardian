@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { Streetlight, Fault, Notification, LightStatus, HealthStatus, FaultType } from '@/types/streetlight';
 import { getFirebaseDatabase, ref, onValue, ensureFirebaseAuth } from '@/lib/database';
+import { clearFaultNotification, sendFaultNotification } from '@/lib/nativePush';
 
 const faultTypeLabels: Record<FaultType, string> = {
   off_when_scheduled_on: 'Light Off',
@@ -266,7 +267,6 @@ export const useSensorData = () => {
   const [isFirebaseConnected, setIsFirebaseConnected] = useState(false);
   const [lastSync, setLastSync] = useState<number | null>(null);
   const previousActiveFaultIdsRef = useRef<Set<string>>(new Set());
-  const activeBrowserNotificationsRef = useRef<Map<string, globalThis.Notification>>(new Map());
   const supportsBrowserNotifications = typeof window !== 'undefined' && 'Notification' in window;
 
   const subscribeLatestReadings = useCallback(async () => {
@@ -368,23 +368,14 @@ export const useSensorData = () => {
     const activeFaults = generatedFaults.filter((fault) => !resolvedFaultIds.has(fault.id));
     const activeFaultIds = new Set(activeFaults.map((fault) => fault.id));
 
-    if (supportsBrowserNotifications && Notification.permission === 'granted') {
-      activeFaults.forEach((fault) => {
-        if (previousActiveFaultIdsRef.current.has(fault.id)) return;
-        const notification = new Notification('New Fault Detected', {
-          body: `${fault.streetlightName} - ${faultTypeLabels[fault.type]}`,
-          icon: '/vite.svg',
-          tag: fault.id,
-        });
-        activeBrowserNotificationsRef.current.set(fault.id, notification);
-      });
-    }
+    activeFaults.forEach((fault) => {
+      if (previousActiveFaultIdsRef.current.has(fault.id)) return;
+      void sendFaultNotification(fault.id, fault.streetlightName, faultTypeLabels[fault.type]);
+    });
 
     previousActiveFaultIdsRef.current.forEach((faultId) => {
       if (activeFaultIds.has(faultId)) return;
-      const activeNotification = activeBrowserNotificationsRef.current.get(faultId);
-      activeNotification?.close();
-      activeBrowserNotificationsRef.current.delete(faultId);
+      void clearFaultNotification(faultId);
     });
 
     previousActiveFaultIdsRef.current = activeFaultIds;
@@ -430,9 +421,7 @@ export const useSensorData = () => {
       return next;
     });
 
-    const activeNotification = activeBrowserNotificationsRef.current.get(faultId);
-    activeNotification?.close();
-    activeBrowserNotificationsRef.current.delete(faultId);
+    void clearFaultNotification(faultId);
     previousActiveFaultIdsRef.current.delete(faultId);
   }, []);
 

@@ -5,8 +5,6 @@ import FaultsList from '@/components/monitor/FaultsList';
 import VoltageChart from '@/components/monitor/VoltageChart';
 import PowerChart from '@/components/monitor/PowerChart';
 import FaultFrequencyChart from '@/components/monitor/FaultFrequencyChart';
-import DailySummary from '@/components/monitor/DailySummary';
-import WeeklyAnalysis from '@/components/monitor/WeeklyAnalysis';
 import HistoryList from '@/components/monitor/HistoryList';
 import { useSensorData } from '@/hooks/useSensorData';
 import { useFirestoreReportAnalytics } from '@/hooks/useFirestoreMonitoring';
@@ -197,8 +195,6 @@ const Monitor: React.FC = () => {
 
           <TabsContent value="history" className="space-y-4">
             <HistoryList />
-            <DailySummary streetlights={streetlights} />
-            <WeeklyAnalysis streetlights={streetlights} />
           </TabsContent>
 
           <TabsContent value="faults" className="space-y-4">
