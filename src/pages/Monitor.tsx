@@ -9,7 +9,6 @@ import UptimeChart from '@/components/monitor/UptimeChart';
 import DailySummary from '@/components/monitor/DailySummary';
 import WeeklyAnalysis from '@/components/monitor/WeeklyAnalysis';
 import HistoryList from '@/components/monitor/HistoryList';
-import FirestoreFaultsPanel from '@/components/monitor/FirestoreFaultsPanel';
 import { useSensorData } from '@/hooks/useSensorData';
 import { useAnalytics } from '@/hooks/useAnalytics';
 import { useFirestoreReportAnalytics } from '@/hooks/useFirestoreMonitoring';
@@ -204,7 +203,6 @@ const Monitor: React.FC = () => {
 
           <TabsContent value="faults" className="space-y-4">
             <FaultsList faults={faults} />
-            <FirestoreFaultsPanel />
           </TabsContent>
         </Tabs>
       </main>

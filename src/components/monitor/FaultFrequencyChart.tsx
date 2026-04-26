@@ -40,6 +40,7 @@
              />
              <YAxis 
               type="number"
+              domain={[0, 1400]}
                tick={{ fontSize: 12 }}
                tickLine={false}
                axisLine={false}

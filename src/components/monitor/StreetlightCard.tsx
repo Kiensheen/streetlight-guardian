@@ -1,7 +1,7 @@
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Streetlight, LightStatus, HealthStatus } from '@/types/streetlight';
-import { Lightbulb, Zap, Activity, Power, MapPin, Battery, Eye, Move, Moon } from 'lucide-react';
+import { Lightbulb, Zap, Activity, Power, MapPin, Eye, Move, Moon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface StreetlightCardProps {
@@ -33,11 +33,12 @@ const StreetlightCard: React.FC<StreetlightCardProps> = ({ streetlight }) => {
   const health = healthConfig[effectiveHealth];
   const StatusIcon = status.icon;
 
-  const batteryColor = !showLive
-    ? 'text-muted-foreground'
-    : streetlight.batterySOH >= 80 ? 'text-success'
-    : streetlight.batterySOH >= 50 ? 'text-warning'
-    : 'text-destructive';
+  const batteryStateRaw = String(streetlight.batteryStatus ?? '').toUpperCase();
+  const batteryStateLabel = batteryStateRaw === 'DEGRADED' ? 'DEGRADED' : batteryStateRaw ? 'NORMAL' : DASH;
+  const batteryStateClass = batteryStateLabel === 'DEGRADED' ? 'text-destructive' : 'text-success';
+  const ledStateRaw = String(streetlight.ledStatus ?? '').toUpperCase();
+  const ledStateLabel = ledStateRaw === 'DEGRADED' ? 'FAULTY' : ledStateRaw ? 'NORMAL' : DASH;
+  const ledStateClass = ledStateLabel === 'FAULTY' ? 'text-destructive' : 'text-success';
 
   const fmt = (n: number, digits = 1) => showLive && hasValue(n) ? n.toFixed(digits) : DASH;
 
@@ -123,11 +124,8 @@ const StreetlightCard: React.FC<StreetlightCardProps> = ({ streetlight }) => {
         {/* Secondary metrics */}
         <div className="grid grid-cols-4 gap-2">
           <div className="space-y-1 text-center">
-            <div className="flex items-center justify-center gap-1 text-muted-foreground">
-              <Battery className="h-3 w-3" />
-            </div>
-            <p className={cn("text-sm font-bold tabular-nums", batteryColor)}>
-              {showLive && hasValue(streetlight.batterySOH) ? `${streetlight.batterySOH.toFixed(0)}%` : DASH}
+            <p className="text-sm font-bold tabular-nums">
+              {showLive && hasValue(streetlight.batterySOH) ? `SoH: ${streetlight.batterySOH.toFixed(0)}%` : `SoH: ${DASH}`}
             </p>
             <p className="text-[10px] text-muted-foreground">SoH</p>
           </div>
@@ -169,37 +167,16 @@ const StreetlightCard: React.FC<StreetlightCardProps> = ({ streetlight }) => {
         {showLive && (streetlight.ledStatus || streetlight.batteryStatus || streetlight.soh !== undefined) && (
           <div className="grid grid-cols-3 gap-2 pt-2 border-t border-border">
             <div className="space-y-1">
-              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Battery SoH</p>
-              <div className="flex items-center gap-2">
-                <div className="relative h-8 w-8 shrink-0">
-                  <svg viewBox="0 0 36 36" className="h-8 w-8 -rotate-90">
-                    <circle cx="18" cy="18" r="15" fill="none" className="stroke-muted" strokeWidth="3" />
-                    <circle
-                      cx="18" cy="18" r="15" fill="none" strokeWidth="3" strokeLinecap="round"
-                      className={cn(
-                        (streetlight.soh ?? streetlight.batterySOH) >= 80 ? 'stroke-success'
-                        : (streetlight.soh ?? streetlight.batterySOH) >= 50 ? 'stroke-warning'
-                        : 'stroke-destructive'
-                      )}
-                      strokeDasharray={`${Math.max(0, Math.min(100, streetlight.soh ?? streetlight.batterySOH)) * 0.94} 94`}
-                    />
-                  </svg>
-                </div>
-                <span className="text-sm font-bold tabular-nums">
-                  {(streetlight.soh ?? streetlight.batterySOH).toFixed(0)}%
-                </span>
-              </div>
-              {streetlight.batteryStatus && (
-                <span className="inline-flex rounded-md border border-border px-2 py-0.5 text-[10px] text-muted-foreground">
-                  {streetlight.batteryStatus}
-                </span>
-              )}
+              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Battery Status</p>
+              <span className={cn('inline-flex rounded-md px-2 py-0.5 text-[11px] font-semibold', batteryStateClass)}>
+                {batteryStateLabel}
+              </span>
             </div>
 
             <div className="space-y-1">
               <p className="text-[10px] uppercase tracking-wide text-muted-foreground">LED Status</p>
-              <span className="inline-flex rounded-md border border-border px-2 py-0.5 text-left text-[10px] text-muted-foreground">
-                {streetlight.ledStatus ?? DASH}
+              <span className={cn('inline-flex rounded-md px-2 py-0.5 text-left text-[11px] font-semibold', ledStateClass)}>
+                {ledStateLabel}
               </span>
             </div>
 

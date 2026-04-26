@@ -1,21 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { getFirebaseFirestore } from '@/lib/database';
-import { collection, doc, onSnapshot, orderBy, query, updateDoc } from 'firebase/firestore';
+import { collection, onSnapshot, orderBy, query } from 'firebase/firestore';
 
-export type FirestoreFaultFilter = 'all' | 'unresolved' | 'resolved';
 export type FirestoreFaultType = 'LOW_VOLTAGE' | 'BULB_FAILURE' | 'LOW_LIGHT_OUTPUT';
-
-export interface FirestoreFault {
-  id: string;
-  type: FirestoreFaultType;
-  severity: 'low' | 'medium' | 'high';
-  value: number;
-  timestamp: number;
-  timeLabel?: string;
-  resolved: boolean;
-  sensorKey: string;
-  resolvedAt?: number;
-}
 
 export interface FirestoreHistoryEntry {
   id: string;
@@ -89,59 +76,8 @@ const isLedOnFromEntry = (entry: FirestoreHistoryEntry): boolean => {
 
 const weekKeyFromTimestamp = (timestampMs: number): string => {
   const date = new Date(timestampMs);
-  const year = date.getFullYear();
-  const startOfYear = new Date(year, 0, 1);
-  const dayMs = 24 * 60 * 60 * 1000;
-  const week = Math.ceil(((date.getTime() - startOfYear.getTime()) / dayMs + startOfYear.getDay() + 1) / 7);
-  return `Week ${week}`;
-};
-
-const deriveFaultsFromHistory = (entries: FirestoreHistoryEntry[]): FirestoreFault[] => {
-  const faults: FirestoreFault[] = [];
-  entries.forEach((entry) => {
-    const voltage = toNumber(entry.voltage);
-    const current = toNumber(entry.current);
-    const lux = toNumber(entry.lux);
-
-    if (Number.isFinite(voltage) && voltage < 11.5) {
-      faults.push({
-        id: `${entry.id}_LOW_VOLTAGE`,
-        type: 'LOW_VOLTAGE',
-        severity: 'high',
-        value: voltage,
-        timestamp: entry.timestamp,
-        timeLabel: entry.timestampLabel,
-        resolved: false,
-        sensorKey: entry.id,
-      });
-    }
-    if (Number.isFinite(current) && current < 50) {
-      faults.push({
-        id: `${entry.id}_BULB_FAILURE`,
-        type: 'BULB_FAILURE',
-        severity: 'high',
-        value: current,
-        timestamp: entry.timestamp,
-        timeLabel: entry.timestampLabel,
-        resolved: false,
-        sensorKey: entry.id,
-      });
-    }
-    if (Number.isFinite(lux) && lux < 10) {
-      faults.push({
-        id: `${entry.id}_LOW_LIGHT_OUTPUT`,
-        type: 'LOW_LIGHT_OUTPUT',
-        severity: 'medium',
-        value: lux,
-        timestamp: entry.timestamp,
-        timeLabel: entry.timestampLabel,
-        resolved: false,
-        sensorKey: entry.id,
-      });
-    }
-  });
-
-  return faults.sort((a, b) => b.timestamp - a.timestamp);
+  const weekOfMonth = Math.min(4, Math.ceil(date.getDate() / 7));
+  return `Week ${weekOfMonth}`;
 };
 
 const HISTORY_COLLECTION_PATH = 'sensorLogs/Streetlight_1/readings';
@@ -261,8 +197,20 @@ export const useFirestoreReportAnalytics = () => {
       voltage: Number(toAverage(values).toFixed(2)),
     }));
 
-    const weeklyFaultMap = new Map<string, number>();
+    const weeklyFaultMap = new Map<string, number>([
+      ['Week 1', 0],
+      ['Week 2', 0],
+      ['Week 3', 0],
+      ['Week 4', 0],
+    ]);
+    const nowDate = new Date();
+    const currentMonth = nowDate.getMonth();
+    const currentYear = nowDate.getFullYear();
+
     withTime.forEach((entry) => {
+      const d = new Date(entry.timestamp);
+      if (d.getFullYear() !== currentYear || d.getMonth() !== currentMonth) return;
+
       const voltage = toNumber(entry.voltage);
       const current = toNumber(entry.current);
       const lux = toNumber(entry.lux);
@@ -291,99 +239,4 @@ export const useFirestoreReportAnalytics = () => {
   }, [entries]);
 
   return { ...analytics, loading };
-};
-
-export const useFirestoreFaults = (filter: FirestoreFaultFilter) => {
-  const { entries, loading: historyLoading } = useFirestoreHistory();
-  const [existingFaults, setExistingFaults] = useState<FirestoreFault[]>([]);
-  const [faults, setFaults] = useState<FirestoreFault[]>([]);
-  const [faultsLoading, setFaultsLoading] = useState(true);
-  const [locallyResolvedIds, setLocallyResolvedIds] = useState<Set<string>>(new Set());
-
-  useEffect(() => {
-    const fs = getFirebaseFirestore();
-    if (!fs) {
-      setFaultsLoading(false);
-      return;
-    }
-
-    const q = query(collection(fs, 'faults'), orderBy('timestamp', 'desc'));
-    const unsub = onSnapshot(
-      q,
-      (snapshot) => {
-        const next = snapshot.docs.map((docSnap) => {
-          const data = docSnap.data() as Record<string, unknown>;
-          const rawTime = typeof data.Time === 'string' ? data.Time : null;
-          const parsedTs = rawTime ? parseEspTimeToMs(rawTime) ?? 0 : 0;
-          const timestamp = Number.isFinite(parsedTs) ? parsedTs : 0;
-          const resolvedAt = toNumber(data.resolvedAt);
-          return {
-            id: docSnap.id,
-            type: (data.type as FirestoreFaultType) ?? 'LOW_VOLTAGE',
-            severity: (data.severity as 'low' | 'medium' | 'high') ?? 'medium',
-            value: toNumber(data.value),
-            timestamp,
-            timeLabel: timestamp ? toDisplayTime(timestamp) : '--',
-            resolved: Boolean(data.resolved),
-            sensorKey: String(data.sensorKey ?? docSnap.id),
-            resolvedAt: Number.isFinite(resolvedAt) ? resolvedAt : undefined,
-          };
-        });
-        setExistingFaults(next);
-        setFaultsLoading(false);
-      },
-      (error) => {
-        console.error('[FirestoreFaults] Snapshot error', error);
-        setFaultsLoading(false);
-      }
-    );
-
-    return () => unsub();
-  }, []);
-
-  useEffect(() => {
-    const derived = deriveFaultsFromHistory(entries);
-    if (existingFaults.length === 0) {
-      setFaults(derived.map((fault) => ({
-        ...fault,
-        resolved: locallyResolvedIds.has(fault.id),
-      })));
-      return;
-    }
-
-    const resolvedByKey = new Map(existingFaults.map((f) => [f.id, f.resolved]));
-    const merged = derived.map((f) => ({
-      ...f,
-      resolved: resolvedByKey.get(f.id) ?? locallyResolvedIds.has(f.id),
-    }));
-    setFaults(merged);
-  }, [entries, existingFaults, locallyResolvedIds]);
-
-  const resolveFault = useCallback(async (faultId: string) => {
-    setLocallyResolvedIds((prev) => {
-      const next = new Set(prev);
-      next.add(faultId);
-      return next;
-    });
-
-    const fs = getFirebaseFirestore();
-    if (!fs) return;
-    const existsInFirestore = existingFaults.some((f) => f.id === faultId);
-    if (!existsInFirestore) return;
-    try {
-      await updateDoc(doc(fs, 'faults', faultId), {
-        resolved: true,
-      });
-    } catch (error) {
-      console.error('[FirestoreFaults] Failed to resolve fault', error);
-    }
-  }, [existingFaults]);
-
-  const filteredFaults = useMemo(() => {
-    if (filter === 'resolved') return faults.filter((fault) => fault.resolved);
-    if (filter === 'unresolved') return faults.filter((fault) => !fault.resolved);
-    return faults;
-  }, [faults, filter]);
-
-  return { faults: filteredFaults, loading: historyLoading || faultsLoading, resolveFault };
 };
