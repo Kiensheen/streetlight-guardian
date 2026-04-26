@@ -9,8 +9,8 @@ import DailySummary from '@/components/monitor/DailySummary';
 import WeeklyAnalysis from '@/components/monitor/WeeklyAnalysis';
 import HistoryList from '@/components/monitor/HistoryList';
 import { useSensorData } from '@/hooks/useSensorData';
-import { useAnalytics } from '@/hooks/useAnalytics';
 import { useFirestoreReportAnalytics } from '@/hooks/useFirestoreMonitoring';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -20,6 +20,7 @@ import { Activity, LayoutDashboard, BarChart3, History, RefreshCw, AlertTriangle
 
 const Monitor: React.FC = () => {
   const [voltageRange, setVoltageRange] = useState<'daily' | 'weekly' | 'monthly'>('daily');
+  const [faultStreetlightFilter, setFaultStreetlightFilter] = useState<'all' | 'node1' | 'node2'>('all');
   const [isDarkMode, setIsDarkMode] = useState(() => {
     if (typeof window !== 'undefined') {
       return localStorage.getItem('theme') === 'dark' ||
@@ -47,13 +48,16 @@ const Monitor: React.FC = () => {
     try { await refresh(); } finally { setTimeout(() => setIsRefreshing(false), 600); }
   };
 
-  const { chartData } = useAnalytics(streetlights, faults);
   const {
     dailyVoltage,
     weeklyVoltage,
     monthlyVoltage,
+    weeklyPowerComparison,
     weeklyFaultFrequency,
   } = useFirestoreReportAnalytics();
+  const filteredFaults = faultStreetlightFilter === 'all'
+    ? faults
+    : faults.filter((fault) => fault.streetlightId === faultStreetlightFilter);
 
   useEffect(() => {
     if (isDarkMode) {
@@ -167,7 +171,7 @@ const Monitor: React.FC = () => {
                   <div className="flex items-center justify-between p-2.5 rounded-lg bg-muted/50">
                     <span className="text-xs text-muted-foreground">Source</span>
                     <span className="text-xs font-medium">
-                      Realtime Database /sensorLogs/Streetlights-1
+                      RTDB /sensorLogs/Streetlights-1, /sensorLogs/Streetlights-2
                     </span>
                   </div>
                   <div className="flex items-center justify-between p-2.5 rounded-lg bg-muted/50">
@@ -189,7 +193,7 @@ const Monitor: React.FC = () => {
               selectedRange={voltageRange}
               onRangeChange={setVoltageRange}
             />
-            <PowerChart data={chartData.powerData} />
+            <PowerChart data={weeklyPowerComparison} />
             <FaultFrequencyChart data={weeklyFaultFrequency} />
           </TabsContent>
 
@@ -200,7 +204,17 @@ const Monitor: React.FC = () => {
           </TabsContent>
 
           <TabsContent value="faults" className="space-y-4">
-            <FaultsList faults={faults} />
+            <Select value={faultStreetlightFilter} onValueChange={(value) => setFaultStreetlightFilter(value as 'all' | 'node1' | 'node2')}>
+              <SelectTrigger className="h-8 text-xs">
+                <SelectValue placeholder="Filter by streetlight" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Show All</SelectItem>
+                <SelectItem value="node1">Streetlight 1</SelectItem>
+                <SelectItem value="node2">Streetlight 2</SelectItem>
+              </SelectContent>
+            </Select>
+            <FaultsList faults={filteredFaults} />
           </TabsContent>
         </Tabs>
       </main>

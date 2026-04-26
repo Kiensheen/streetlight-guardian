@@ -15,7 +15,8 @@ interface VoltageChartProps {
 }
 
 const chartConfig: ChartConfig = {
-  voltage: { label: 'Battery Voltage', color: 'hsl(142, 76%, 36%)' },
+  sl1: { label: 'Streetlight 1', color: '#2563EB' },
+  sl2: { label: 'Streetlight 2', color: '#DC2626' },
 };
 
 const VoltageChart: React.FC<VoltageChartProps> = ({
@@ -71,7 +72,8 @@ const VoltageChart: React.FC<VoltageChartProps> = ({
               tickFormatter={(v) => `${v}V`}
             />
             <ChartTooltip content={<ChartTooltipContent />} />
-            <Line type="monotone" dataKey="voltage" stroke="var(--color-voltage)" strokeWidth={2} dot name="Battery Voltage" />
+            <Line type="monotone" dataKey="sl1" stroke="var(--color-sl1)" strokeWidth={2} dot name="Streetlight 1" />
+            <Line type="monotone" dataKey="sl2" stroke="var(--color-sl2)" strokeWidth={2} dot name="Streetlight 2" />
           </LineChart>
         </ChartContainer>
       </CardContent>

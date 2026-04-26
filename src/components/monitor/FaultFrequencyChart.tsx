@@ -1,23 +1,17 @@
  import React from 'react';
  import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
  import { ChartContainer, ChartTooltip, ChartTooltipContent, ChartConfig } from '@/components/ui/chart';
- import { BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Cell } from 'recharts';
+ import { BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
  import { AlertTriangle } from 'lucide-react';
  
  interface FaultFrequencyChartProps {
-  data: { week: string; count: number }[];
+  data: { week: string; sl1: number; sl2: number }[];
  }
  
  const chartConfig: ChartConfig = {
-   count: { label: 'Occurrences', color: 'hsl(0, 84%, 60%)' },
+  sl1: { label: 'Streetlight 1', color: '#2563EB' },
+  sl2: { label: 'Streetlight 2', color: '#DC2626' },
  };
- 
- const colors = [
-   'hsl(0, 84%, 60%)',
-   'hsl(38, 92%, 50%)',
-   'hsl(221, 83%, 53%)',
-   'hsl(280, 65%, 60%)',
- ];
  
  const FaultFrequencyChart: React.FC<FaultFrequencyChartProps> = ({ data }) => {
    return (
@@ -46,11 +40,8 @@
                axisLine={false}
              />
              <ChartTooltip content={<ChartTooltipContent />} />
-            <Bar dataKey="count" radius={[4, 4, 0, 0]} name="Occurrences">
-               {data.map((entry, index) => (
-                 <Cell key={`cell-${index}`} fill={colors[index % colors.length]} />
-               ))}
-             </Bar>
+            <Bar dataKey="sl1" radius={[4, 4, 0, 0]} name="Streetlight 1" fill="var(--color-sl1)" />
+            <Bar dataKey="sl2" radius={[4, 4, 0, 0]} name="Streetlight 2" fill="var(--color-sl2)" />
            </BarChart>
          </ChartContainer>
        </CardContent>

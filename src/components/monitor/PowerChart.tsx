@@ -5,13 +5,12 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
 import { Power } from 'lucide-react';
 
 interface PowerChartProps {
-  data: Record<string, string | number>[];
+  data: { day: string; sl1: number; sl2: number }[];
 }
 
 const chartConfig: ChartConfig = {
-  sl1: { label: 'Streetlight 1', color: 'hsl(221, 83%, 53%)' },
-  sl2: { label: 'Streetlight 2', color: 'hsl(199, 89%, 48%)' },
-  sl3: { label: 'Streetlight 3', color: 'hsl(280, 65%, 60%)' },
+  sl1: { label: 'Streetlight 1', color: '#2563EB' },
+  sl2: { label: 'Streetlight 2', color: '#DC2626' },
 };
 
 const PowerChart: React.FC<PowerChartProps> = ({ data }) => {
@@ -43,7 +42,6 @@ const PowerChart: React.FC<PowerChartProps> = ({ data }) => {
             <ChartTooltip content={<ChartTooltipContent />} />
             <Bar dataKey="sl1" fill="var(--color-sl1)" radius={[4, 4, 0, 0]} name="Streetlight 1" />
             <Bar dataKey="sl2" fill="var(--color-sl2)" radius={[4, 4, 0, 0]} name="Streetlight 2" />
-            <Bar dataKey="sl3" fill="var(--color-sl3)" radius={[4, 4, 0, 0]} name="Streetlight 3" />
           </BarChart>
         </ChartContainer>
       </CardContent>

@@ -10,11 +10,11 @@ const faultTypeLabels: Record<FaultType, string> = {
   low_battery: 'Battery Faulty',
 };
 
-const SENSORS_PATH = 'sensorLogs/Streetlights-1';
+const SENSORS_PATH_1 = 'sensorLogs/Streetlights-1';
+const SENSORS_PATH_2 = 'sensorLogs/Streetlights-2';
 const NODE_CONFIG: { nodeId: string; path: string | null; name: string; location: string }[] = [
-  { nodeId: 'node1', path: SENSORS_PATH, name: 'Streetlight 1', location: 'Main Street North' },
-  { nodeId: 'node2', path: null, name: 'Streetlight 2', location: 'Main Street Center' },
-  { nodeId: 'node3', path: null, name: 'Streetlight 3', location: 'Main Street South' },
+  { nodeId: 'node1', path: SENSORS_PATH_1, name: 'Streetlight 1', location: 'Main Street North' },
+  { nodeId: 'node2', path: SENSORS_PATH_2, name: 'Streetlight 2', location: 'Main Street Center' },
 ];
 
 type SensorLogValue = {

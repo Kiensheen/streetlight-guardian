@@ -3,7 +3,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { History as HistoryIcon, Zap, Sun, Move } from 'lucide-react';
-import { useFirestoreHistory } from '@/hooks/useFirestoreMonitoring';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { StreetlightKey, useFirestoreHistory } from '@/hooks/useFirestoreMonitoring';
 
 interface HistoryEntry {
   key: string;
@@ -21,8 +22,14 @@ const toFiniteNumber = (value: unknown): number => {
   return Number.isFinite(parsed) ? parsed : Number.NaN;
 };
 
+const pathLabel: Record<StreetlightKey, string> = {
+  streetlight_1: 'sensorLogs/Streetlight_1/readings',
+  streetlight_2: 'sensorLogs/Streetlight_2/readings',
+};
+
 const HistoryList: React.FC = () => {
-  const { entries: firestoreEntries, loading } = useFirestoreHistory();
+  const [selectedStreetlight, setSelectedStreetlight] = React.useState<StreetlightKey>('streetlight_1');
+  const { entries: firestoreEntries, loading } = useFirestoreHistory(selectedStreetlight);
   const entries = useMemo<HistoryEntry[]>(() => {
     const minuteMap = new Map<string, {
       timestamp: number;
@@ -92,9 +99,20 @@ const HistoryList: React.FC = () => {
           <HistoryIcon className="h-4 w-4 text-primary" />
           Sensor Logs
           <Badge variant="outline" className="ml-auto text-xs">
-            sensorLogs/Streetlight_1/readings
+            {pathLabel[selectedStreetlight]}
           </Badge>
         </CardTitle>
+        <div className="pt-2">
+          <Select value={selectedStreetlight} onValueChange={(value) => setSelectedStreetlight(value as StreetlightKey)}>
+            <SelectTrigger className="h-8 text-xs">
+              <SelectValue placeholder="Select streetlight" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="streetlight_1">Streetlight 1</SelectItem>
+              <SelectItem value="streetlight_2">Streetlight 2</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
       </CardHeader>
       <CardContent className="space-y-2">
         {loading ? (
