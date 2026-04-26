@@ -7,7 +7,7 @@ const faultTypeLabels: Record<FaultType, string> = {
   flickering: 'Flickering',
   dim_output: 'Dim Output',
   voltage_anomaly: 'Voltage Anomaly',
-  low_battery: 'Low Battery',
+  low_battery: 'Battery Faulty',
 };
 
 const SENSORS_PATH = 'sensorLogs/Streetlights-1';
@@ -115,6 +115,8 @@ const generateFaults = (streetlights: Streetlight[]): Fault[] => {
   const faults: Fault[] = [];
   streetlights.forEach(sl => {
     if (!sl.hasData) return;
+    const batteryStatusText = String(sl.batteryStatus ?? '').toUpperCase();
+    const isBatteryFaulty = batteryStatusText.includes('FAULTY') || batteryStatusText === 'DEGRADED';
 
     if (sl.ledStatus === 'DEGRADED') {
       faults.push({
@@ -128,7 +130,7 @@ const generateFaults = (streetlights: Streetlight[]): Fault[] => {
         description: `LED Degraded - Bulb replacement needed`,
       });
     }
-    if (sl.batteryStatus === 'DEGRADED') {
+    if (isBatteryFaulty) {
       faults.push({
         id: `fault-${sl.id}-batt`,
         streetlightId: sl.id,
@@ -137,10 +139,10 @@ const generateFaults = (streetlights: Streetlight[]): Fault[] => {
         severity: 'high',
         detectedAt: sl.lastUpdated > 0 ? sl.lastUpdated : 0,
         resolved: false,
-        description: `Battery Degraded - Check battery health`,
+        description: `Battery Faulty`,
       });
     }
-    if (sl.soh !== undefined && hasNumber(sl.soh) && sl.soh < 50 && sl.batteryStatus !== 'DEGRADED') {
+    if (sl.soh !== undefined && hasNumber(sl.soh) && sl.soh < 50 && !isBatteryFaulty) {
       faults.push({
         id: `fault-${sl.id}-soh`,
         streetlightId: sl.id,
@@ -201,7 +203,7 @@ const mapSnapshotToLight = (
 
   const status = deriveStatus(currentMa, voltage);
   let healthStatus = getHealthStatus(status, voltage);
-  if (ledStatus === 'DEGRADED' || batteryStatus === 'DEGRADED') healthStatus = 'fault';
+  if (ledStatus === 'DEGRADED' || String(batteryStatus ?? '').toUpperCase().includes('FAULTY') || batteryStatus === 'DEGRADED') healthStatus = 'fault';
   else if (soh !== undefined && soh < 50) healthStatus = healthStatus === 'fault' ? 'fault' : 'warning';
 
   return {

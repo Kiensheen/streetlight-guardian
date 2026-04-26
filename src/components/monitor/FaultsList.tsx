@@ -21,7 +21,7 @@ const faultTypeLabels: Record<FaultType, string> = {
   flickering: 'Flickering',
   dim_output: 'Dim Output',
   voltage_anomaly: 'Voltage Anomaly',
-  low_battery: 'Low Battery',
+  low_battery: 'Battery Faulty',
 };
  
  const FaultsList: React.FC<FaultsListProps> = ({ faults }) => {
