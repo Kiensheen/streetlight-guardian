@@ -77,18 +77,8 @@ export const useAnalytics = (streetlights: Streetlight[], faults: Fault[]) => {
       { type: 'Voltage', count: faults.filter(f => f.type === 'voltage_anomaly').length },
     ];
     
-    const uptimeData = streetlights
-      .filter(sl => sl.hasData)
-      .map(sl => {
-        const summary = summaries.find(s => s.streetlightId === sl.id);
-        return {
-          name: sl.name,
-          uptime: summary?.uptimePercentage || 100,
-          downtime: 100 - (summary?.uptimePercentage || 100),
-        };
-      });
-    
-    return { voltageData, powerData, faultData, uptimeData };
+
+    return { voltageData, powerData, faultData };
   }, [streetlights, faults, summaries]);
 
   return { summaries, chartData };
