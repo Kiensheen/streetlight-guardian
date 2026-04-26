@@ -2,7 +2,7 @@
 import { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  appId: 'com.streetlight.guardian',  // ← CHANGE THIS
+  appId: 'com.ustp.streetlight',
   appName: 'Streetlight Guardian',
   webDir: 'dist',
   plugins: {

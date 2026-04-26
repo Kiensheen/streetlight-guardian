@@ -11,7 +11,7 @@ android {
     }
     
     defaultConfig {
-        applicationId "com.streetlight.guardian"
+        applicationId "com.ustp.streetlight"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
