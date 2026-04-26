@@ -37,8 +37,20 @@ const StreetlightCard: React.FC<StreetlightCardProps> = ({ streetlight }) => {
   const batteryStateLabel = batteryStateRaw === 'DEGRADED' ? 'DEGRADED' : batteryStateRaw ? 'NORMAL' : DASH;
   const batteryStateClass = batteryStateLabel === 'DEGRADED' ? 'text-destructive' : 'text-success';
   const ledStateRaw = String(streetlight.ledStatus ?? '').toUpperCase();
-  const ledStateLabel = ledStateRaw === 'DEGRADED' ? 'FAULTY' : ledStateRaw ? 'NORMAL' : DASH;
-  const ledStateClass = ledStateLabel === 'FAULTY' ? 'text-destructive' : 'text-success';
+  const ledStateLabel = !ledStateRaw
+    ? DASH
+    : ledStateRaw === 'FAULTY'
+      ? 'FAULTY'
+      : ledStateRaw === 'DAYTIME - LED OFF'
+        ? 'OFF'
+        : 'NORMAL';
+  const ledStateClass = ledStateLabel === 'FAULTY'
+    ? 'text-destructive'
+    : ledStateLabel === 'OFF'
+      ? 'text-muted-foreground'
+      : 'text-success';
+  const isLedFaulty = ledStateRaw === 'FAULTY';
+  const isBatteryFaulty = batteryStateRaw === 'DEGRADED' || batteryStateRaw.includes('FAULTY');
 
   const fmt = (n: number, digits = 1) => showLive && hasValue(n) ? n.toFixed(digits) : DASH;
 
@@ -177,10 +189,10 @@ const StreetlightCard: React.FC<StreetlightCardProps> = ({ streetlight }) => {
               <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Active Faults</p>
               <p className={cn(
                 "text-lg font-bold tabular-nums",
-                (Number(streetlight.ledStatus === 'DEGRADED') + Number(streetlight.batteryStatus === 'DEGRADED') + Number((streetlight.soh ?? 100) < 50)) > 0
+                (Number(isLedFaulty) + Number(isBatteryFaulty) + Number((streetlight.soh ?? 100) < 50)) > 0
                   ? "text-destructive" : "text-success"
               )}>
-                {Number(streetlight.ledStatus === 'DEGRADED') + Number(streetlight.batteryStatus === 'DEGRADED') + Number((streetlight.soh ?? 100) < 50)}
+                {Number(isLedFaulty) + Number(isBatteryFaulty) + Number((streetlight.soh ?? 100) < 50)}
               </p>
             </div>
           </div>

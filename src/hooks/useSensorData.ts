@@ -117,8 +117,10 @@ const generateFaults = (streetlights: Streetlight[]): Fault[] => {
     if (!sl.hasData) return;
     const batteryStatusText = String(sl.batteryStatus ?? '').toUpperCase();
     const isBatteryFaulty = batteryStatusText.includes('FAULTY') || batteryStatusText === 'DEGRADED';
+    const ledStatusText = String(sl.ledStatus ?? '').toUpperCase();
+    const isLedFaulty = ledStatusText === 'FAULTY' || ledStatusText === 'DEGRADED';
 
-    if (sl.ledStatus === 'DEGRADED') {
+    if (isLedFaulty) {
       faults.push({
         id: `fault-${sl.id}-led`,
         streetlightId: sl.id,
@@ -127,7 +129,7 @@ const generateFaults = (streetlights: Streetlight[]): Fault[] => {
         severity: 'high',
         detectedAt: sl.lastUpdated > 0 ? sl.lastUpdated : 0,
         resolved: false,
-        description: `LED Degraded - Bulb replacement needed`,
+        description: `LED Faulty`,
       });
     }
     if (isBatteryFaulty) {
@@ -203,7 +205,15 @@ const mapSnapshotToLight = (
 
   const status = deriveStatus(currentMa, voltage);
   let healthStatus = getHealthStatus(status, voltage);
-  if (ledStatus === 'DEGRADED' || String(batteryStatus ?? '').toUpperCase().includes('FAULTY') || batteryStatus === 'DEGRADED') healthStatus = 'fault';
+  const ledStatusText = String(ledStatus ?? '').toUpperCase();
+  if (
+    ledStatusText === 'FAULTY' ||
+    ledStatusText === 'DEGRADED' ||
+    String(batteryStatus ?? '').toUpperCase().includes('FAULTY') ||
+    batteryStatus === 'DEGRADED'
+  ) {
+    healthStatus = 'fault';
+  }
   else if (soh !== undefined && soh < 50) healthStatus = healthStatus === 'fault' ? 'fault' : 'warning';
 
   return {
