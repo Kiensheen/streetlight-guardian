@@ -12,6 +12,7 @@ import HistoryList from '@/components/monitor/HistoryList';
 import FirestoreFaultsPanel from '@/components/monitor/FirestoreFaultsPanel';
 import { useSensorData } from '@/hooks/useSensorData';
 import { useAnalytics } from '@/hooks/useAnalytics';
+import { useFirestoreReportAnalytics } from '@/hooks/useFirestoreMonitoring';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -20,6 +21,7 @@ import { cn } from '@/lib/utils';
 import { Activity, LayoutDashboard, BarChart3, History, RefreshCw, AlertTriangle } from 'lucide-react';
 
 const Monitor: React.FC = () => {
+  const [voltageRange, setVoltageRange] = useState<'daily' | 'weekly' | 'monthly'>('daily');
   const [isDarkMode, setIsDarkMode] = useState(() => {
     if (typeof window !== 'undefined') {
       return localStorage.getItem('theme') === 'dark' ||
@@ -48,6 +50,12 @@ const Monitor: React.FC = () => {
   };
 
   const { chartData } = useAnalytics(streetlights, faults);
+  const {
+    dailyVoltage,
+    weeklyVoltage,
+    monthlyVoltage,
+    weeklyFaultFrequency,
+  } = useFirestoreReportAnalytics();
 
   useEffect(() => {
     if (isDarkMode) {
@@ -176,9 +184,15 @@ const Monitor: React.FC = () => {
           </TabsContent>
 
           <TabsContent value="reports" className="space-y-4">
-            <VoltageChart data={chartData.voltageData} />
+            <VoltageChart
+              dailyData={dailyVoltage}
+              weeklyData={weeklyVoltage}
+              monthlyData={monthlyVoltage}
+              selectedRange={voltageRange}
+              onRangeChange={setVoltageRange}
+            />
             <PowerChart data={chartData.powerData} />
-            <FaultFrequencyChart data={chartData.faultData} />
+            <FaultFrequencyChart data={weeklyFaultFrequency} />
             <UptimeChart data={chartData.uptimeData} />
           </TabsContent>
 

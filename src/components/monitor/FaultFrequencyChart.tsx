@@ -5,7 +5,7 @@
  import { AlertTriangle } from 'lucide-react';
  
  interface FaultFrequencyChartProps {
-   data: { type: string; count: number }[];
+  data: { week: string; count: number }[];
  }
  
  const chartConfig: ChartConfig = {
@@ -25,33 +25,27 @@
        <CardHeader className="pb-2">
          <CardTitle className="text-lg font-semibold flex items-center gap-2">
            <AlertTriangle className="h-5 w-5 text-destructive" />
-           Fault Frequency Analysis
+          Weekly Fault Frequency Analysis
          </CardTitle>
        </CardHeader>
        <CardContent>
          <ChartContainer config={chartConfig} className="h-[280px] w-full">
-           <BarChart 
-             data={data} 
-             layout="vertical"
-             margin={{ top: 10, right: 30, left: 80, bottom: 0 }}
-           >
-             <CartesianGrid strokeDasharray="3 3" className="stroke-border" horizontal={false} />
+          <BarChart data={data} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" className="stroke-border" vertical={false} />
              <XAxis 
-               type="number"
+              dataKey="week"
                tick={{ fontSize: 12 }}
                tickLine={false}
                axisLine={false}
              />
              <YAxis 
-               type="category"
-               dataKey="type"
+              type="number"
                tick={{ fontSize: 12 }}
                tickLine={false}
                axisLine={false}
-               width={70}
              />
              <ChartTooltip content={<ChartTooltipContent />} />
-             <Bar dataKey="count" radius={[0, 4, 4, 0]} name="Occurrences">
+            <Bar dataKey="count" radius={[4, 4, 0, 0]} name="Occurrences">
                {data.map((entry, index) => (
                  <Cell key={`cell-${index}`} fill={colors[index % colors.length]} />
                ))}

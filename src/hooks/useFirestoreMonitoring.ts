@@ -34,6 +34,16 @@ export interface FirestoreHistoryEntry {
   soh?: number | string | null;
 };
 
+export interface VoltageTrendPoint {
+  label: string;
+  voltage: number;
+}
+
+export interface WeeklyFaultPoint {
+  week: string;
+  count: number;
+}
+
 const toNumber = (value: unknown): number => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : Number.NaN;
@@ -63,6 +73,28 @@ const toDisplayTime = (timestampMs: number): string =>
     minute: '2-digit',
     second: '2-digit',
   });
+
+const toAverage = (values: number[]): number => {
+  if (values.length === 0) return 0;
+  return values.reduce((sum, v) => sum + v, 0) / values.length;
+};
+
+const isLedOnFromEntry = (entry: FirestoreHistoryEntry): boolean => {
+  const ledStatus = String(entry.ledStatus ?? '').toUpperCase();
+  if (ledStatus.includes('OFF')) return false;
+  if (ledStatus.length > 0) return true;
+  const current = toNumber(entry.current);
+  return Number.isFinite(current) && current >= 50;
+};
+
+const weekKeyFromTimestamp = (timestampMs: number): string => {
+  const date = new Date(timestampMs);
+  const year = date.getFullYear();
+  const startOfYear = new Date(year, 0, 1);
+  const dayMs = 24 * 60 * 60 * 1000;
+  const week = Math.ceil(((date.getTime() - startOfYear.getTime()) / dayMs + startOfYear.getDay() + 1) / 7);
+  return `Week ${week}`;
+};
 
 const deriveFaultsFromHistory = (entries: FirestoreHistoryEntry[]): FirestoreFault[] => {
   const faults: FirestoreFault[] = [];
@@ -163,6 +195,102 @@ export const useFirestoreHistory = () => {
   }, []);
 
   return { entries, loading };
+};
+
+export const useFirestoreReportAnalytics = () => {
+  const { entries, loading } = useFirestoreHistory();
+
+  const analytics = useMemo(() => {
+    const withTime = entries
+      .filter((entry) => Number.isFinite(entry.timestamp) && entry.timestamp > 0)
+      .sort((a, b) => a.timestamp - b.timestamp);
+
+    const now = Date.now();
+    const oneHourMs = 60 * 60 * 1000;
+    const oneDayMs = 24 * oneHourMs;
+
+    const dailyCutoff = now - oneDayMs;
+    const weeklyCutoff = now - (7 * oneDayMs);
+    const monthlyCutoff = now - (30 * oneDayMs);
+
+    const dailyMap = new Map<string, number[]>();
+    withTime
+      .filter((entry) => entry.timestamp >= dailyCutoff)
+      .forEach((entry) => {
+        const d = new Date(entry.timestamp);
+        const label = `${String(d.getHours()).padStart(2, '0')}:00`;
+        const voltage = toNumber(entry.voltage);
+        if (!Number.isFinite(voltage)) return;
+        if (!dailyMap.has(label)) dailyMap.set(label, []);
+        dailyMap.get(label)?.push(voltage);
+      });
+    const dailyVoltage: VoltageTrendPoint[] = Array.from(dailyMap.entries()).map(([label, values]) => ({
+      label,
+      voltage: Number(toAverage(values).toFixed(2)),
+    }));
+
+    const weeklyMap = new Map<string, number[]>();
+    withTime
+      .filter((entry) => entry.timestamp >= weeklyCutoff)
+      .forEach((entry) => {
+        const d = new Date(entry.timestamp);
+        const label = d.toLocaleDateString(undefined, { month: 'short', day: '2-digit' });
+        const voltage = toNumber(entry.voltage);
+        if (!Number.isFinite(voltage)) return;
+        if (!weeklyMap.has(label)) weeklyMap.set(label, []);
+        weeklyMap.get(label)?.push(voltage);
+      });
+    const weeklyVoltage: VoltageTrendPoint[] = Array.from(weeklyMap.entries()).map(([label, values]) => ({
+      label,
+      voltage: Number(toAverage(values).toFixed(2)),
+    }));
+
+    const monthlyMap = new Map<string, number[]>();
+    withTime
+      .filter((entry) => entry.timestamp >= monthlyCutoff)
+      .forEach((entry) => {
+        const d = new Date(entry.timestamp);
+        const label = d.toLocaleDateString(undefined, { month: 'short', day: '2-digit' });
+        const voltage = toNumber(entry.voltage);
+        if (!Number.isFinite(voltage)) return;
+        if (!monthlyMap.has(label)) monthlyMap.set(label, []);
+        monthlyMap.get(label)?.push(voltage);
+      });
+    const monthlyVoltage: VoltageTrendPoint[] = Array.from(monthlyMap.entries()).map(([label, values]) => ({
+      label,
+      voltage: Number(toAverage(values).toFixed(2)),
+    }));
+
+    const weeklyFaultMap = new Map<string, number>();
+    withTime.forEach((entry) => {
+      const voltage = toNumber(entry.voltage);
+      const current = toNumber(entry.current);
+      const lux = toNumber(entry.lux);
+      const ledOn = isLedOnFromEntry(entry);
+
+      const lowVoltage = Number.isFinite(voltage) && voltage < 11.5;
+      const bulbFailure = ledOn && Number.isFinite(current) && current < 50;
+      const lowLight = ledOn && Number.isFinite(lux) && lux < 10;
+      if (!lowVoltage && !bulbFailure && !lowLight) return;
+
+      const week = weekKeyFromTimestamp(entry.timestamp);
+      const currentCount = weeklyFaultMap.get(week) ?? 0;
+      let add = 0;
+      if (lowVoltage) add += 1;
+      if (bulbFailure) add += 1;
+      if (lowLight) add += 1;
+      weeklyFaultMap.set(week, currentCount + add);
+    });
+
+    const weeklyFaultFrequency: WeeklyFaultPoint[] = Array.from(weeklyFaultMap.entries()).map(([week, count]) => ({
+      week,
+      count,
+    }));
+
+    return { dailyVoltage, weeklyVoltage, monthlyVoltage, weeklyFaultFrequency };
+  }, [entries]);
+
+  return { ...analytics, loading };
 };
 
 export const useFirestoreFaults = (filter: FirestoreFaultFilter) => {

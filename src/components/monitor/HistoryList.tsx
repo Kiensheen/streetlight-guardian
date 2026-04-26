@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -23,20 +23,66 @@ const toFiniteNumber = (value: unknown): number => {
 
 const HistoryList: React.FC = () => {
   const { entries: firestoreEntries, loading } = useFirestoreHistory();
-  const [entries, setEntries] = useState<HistoryEntry[]>([]);
+  const entries = useMemo<HistoryEntry[]>(() => {
+    const minuteMap = new Map<string, {
+      timestamp: number;
+      voltage: number[];
+      current: number[];
+      power: number[];
+      lux: number[];
+      ldr: number[];
+      motionDetected: boolean;
+    }>();
 
-  useEffect(() => {
-    const list: HistoryEntry[] = firestoreEntries.slice(0, 50).map((entry) => ({
-      key: entry.id,
-      timestampLabel: entry.timestampLabel,
-      voltage: toFiniteNumber(entry.voltage),
-      current: toFiniteNumber(entry.current),
-      power: toFiniteNumber(entry.power),
-      lux: toFiniteNumber(entry.lux),
-      ldr: toFiniteNumber(entry.ldr),
-      microwave: toFiniteNumber(entry.motion ?? entry.microwave),
-    }));
-    setEntries(list);
+    firestoreEntries.forEach((entry) => {
+      if (!entry.rawTime) return;
+      const minuteKey = entry.rawTime.slice(0, 14); // MM-DD-YY HH:MM
+      const timestamp = entry.timestamp;
+      if (!minuteMap.has(minuteKey)) {
+        minuteMap.set(minuteKey, {
+          timestamp,
+          voltage: [],
+          current: [],
+          power: [],
+          lux: [],
+          ldr: [],
+          motionDetected: false,
+        });
+      }
+      const bucket = minuteMap.get(minuteKey);
+      if (!bucket) return;
+
+      const voltage = toFiniteNumber(entry.voltage);
+      const current = toFiniteNumber(entry.current);
+      const power = toFiniteNumber(entry.power);
+      const lux = toFiniteNumber(entry.lux);
+      const ldr = toFiniteNumber(entry.ldr);
+      const motion = toFiniteNumber(entry.motion ?? entry.microwave);
+
+      if (Number.isFinite(voltage)) bucket.voltage.push(voltage);
+      if (Number.isFinite(current)) bucket.current.push(current);
+      if (Number.isFinite(power)) bucket.power.push(power);
+      if (Number.isFinite(lux)) bucket.lux.push(lux);
+      if (Number.isFinite(ldr)) bucket.ldr.push(ldr);
+      if (Number.isFinite(motion) && motion === 1) bucket.motionDetected = true;
+    });
+
+    const avg = (values: number[]): number =>
+      values.length ? values.reduce((s, v) => s + v, 0) / values.length : Number.NaN;
+
+    return Array.from(minuteMap.entries())
+      .map(([key, v]) => ({
+        key,
+        timestampLabel: v.timestamp > 0 ? new Date(v.timestamp).toLocaleString() : '--',
+        voltage: avg(v.voltage),
+        current: avg(v.current),
+        power: avg(v.power),
+        lux: avg(v.lux),
+        ldr: avg(v.ldr),
+        microwave: v.motionDetected ? 1 : 0,
+      }))
+      .sort((a, b) => b.key.localeCompare(a.key))
+      .slice(0, 50);
   }, [firestoreEntries]);
 
   return (
