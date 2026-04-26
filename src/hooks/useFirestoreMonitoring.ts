@@ -1,14 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { getFirebaseDatabase, getFirebaseFirestore, ref, onValue, ensureFirebaseAuth } from '@/lib/database';
-import {
-  collection,
-  doc,
-  onSnapshot,
-  orderBy,
-  query,
-  setDoc,
-  updateDoc,
-} from 'firebase/firestore';
+import { useEffect, useMemo, useState } from 'react';
+import { getFirebaseFirestore } from '@/lib/database';
+import { collection, onSnapshot, orderBy, query } from 'firebase/firestore';
 
 export type FirestoreFaultFilter = 'all' | 'unresolved' | 'resolved';
 export type FirestoreFaultType = 'LOW_VOLTAGE' | 'BULB_FAILURE' | 'LOW_LIGHT_OUTPUT';
@@ -19,12 +11,17 @@ export interface FirestoreFault {
   severity: 'low' | 'medium' | 'high';
   value: number;
   timestamp: number;
+  timeLabel?: string;
   resolved: boolean;
   sensorKey: string;
   resolvedAt?: number;
 }
 
-type SensorLogPayload = {
+export interface FirestoreHistoryEntry {
+  id: string;
+  timestamp: number;
+  timestampLabel: string;
+  rawTime: string | null;
   voltage?: number | string | null;
   current?: number | string | null;
   power?: number | string | null;
@@ -35,8 +32,6 @@ type SensorLogPayload = {
   ledStatus?: string | null;
   batteryStatus?: string | null;
   soh?: number | string | null;
-  timeMillis?: number | string | null;
-  timeStamp?: string | number | null;
 };
 
 const toNumber = (value: unknown): number => {
@@ -44,162 +39,83 @@ const toNumber = (value: unknown): number => {
   return Number.isFinite(parsed) ? parsed : Number.NaN;
 };
 
-const isLedOn = (payload: SensorLogPayload): boolean => {
-  const status = String(payload.ledStatus ?? '').toUpperCase();
-  if (status.includes('OFF')) return false;
-  if (status) return true;
-  const current = toNumber(payload.current);
-  return Number.isFinite(current) && current >= 50;
+const parseEspTimeToMs = (value: unknown): number | null => {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  const match = /^(\d{2})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2}):(\d{2})$/.exec(trimmed);
+  if (!match) return null;
+  const [, mm, dd, yy, hh, min, sec] = match;
+  const month = Number(mm);
+  const day = Number(dd);
+  const year = 2000 + Number(yy);
+  const hour = Number(hh);
+  const minute = Number(min);
+  const second = Number(sec);
+  return new Date(year, month - 1, day, hour, minute, second).getTime();
 };
 
-const estimateTimestamp = (sensorKey: string, payload: SensorLogPayload): number => {
-  const timeMillis = toNumber(payload.timeMillis);
-  if (Number.isFinite(timeMillis) && timeMillis >= 0) {
-    return Math.max(0, Date.now() - timeMillis);
-  }
-  const keyNum = Number(sensorKey);
-  if (Number.isFinite(keyNum) && keyNum > 0) {
-    return keyNum >= 1_000_000_000_000 ? keyNum : keyNum * 1000;
-  }
-  return Date.now();
-};
+const toDisplayTime = (timestampMs: number): string =>
+  new Date(timestampMs).toLocaleString(undefined, {
+    month: 'short',
+    day: '2-digit',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    second: '2-digit',
+  });
 
-const detectFaults = (sensorKey: string, payload: SensorLogPayload): Omit<FirestoreFault, 'id' | 'resolved' | 'resolvedAt'>[] => {
-  const voltage = toNumber(payload.voltage);
-  const current = toNumber(payload.current);
-  const lux = toNumber(payload.lux);
-  const timestamp = estimateTimestamp(sensorKey, payload);
-  const faults: Omit<FirestoreFault, 'id' | 'resolved' | 'resolvedAt'>[] = [];
+const deriveFaultsFromHistory = (entries: FirestoreHistoryEntry[]): FirestoreFault[] => {
+  const faults: FirestoreFault[] = [];
+  entries.forEach((entry) => {
+    const voltage = toNumber(entry.voltage);
+    const current = toNumber(entry.current);
+    const lux = toNumber(entry.lux);
 
-  if (Number.isFinite(voltage) && voltage < 11.5) {
-    faults.push({
-      type: 'LOW_VOLTAGE',
-      severity: 'high',
-      value: voltage,
-      timestamp,
-      sensorKey,
-    });
-  }
-
-  if (isLedOn(payload) && Number.isFinite(current) && current < 50) {
-    faults.push({
-      type: 'BULB_FAILURE',
-      severity: 'high',
-      value: current,
-      timestamp,
-      sensorKey,
-    });
-  }
-
-  if (Number.isFinite(lux) && lux < 10) {
-    faults.push({
-      type: 'LOW_LIGHT_OUTPUT',
-      severity: 'medium',
-      value: lux,
-      timestamp,
-      sensorKey,
-    });
-  }
-
-  return faults;
-};
-
-export const useFirestoreSensorSync = () => {
-  const [isSyncing, setIsSyncing] = useState(false);
-  const [lastSyncedAt, setLastSyncedAt] = useState<number | null>(null);
-  const syncedSensorKeys = useRef<Set<string>>(new Set());
-  const syncedFaultKeys = useRef<Set<string>>(new Set());
-
-  useEffect(() => {
-    const db = getFirebaseDatabase();
-    const fs = getFirebaseFirestore();
-    if (!db || !fs) return;
-
-    let unsub: (() => void) | undefined;
-    let cancelled = false;
-
-    ensureFirebaseAuth()
-      .then(() => {
-        if (cancelled) return;
-        const logsRef = ref(db, 'sensorLogs');
-        unsub = onValue(
-          logsRef,
-          async (snap) => {
-            if (!snap.exists()) return;
-
-            const raw = snap.val();
-            if (!raw || typeof raw !== 'object') return;
-
-            setIsSyncing(true);
-            const entries = Object.entries(raw as Record<string, SensorLogPayload>)
-              .filter(([, value]) => value && typeof value === 'object')
-              .sort((a, b) => estimateTimestamp(a[0], a[1]) - estimateTimestamp(b[0], b[1]));
-
-            for (const [sensorKey, payload] of entries) {
-              if (syncedSensorKeys.current.has(sensorKey)) continue;
-              const timestamp = estimateTimestamp(sensorKey, payload);
-              const sensorDocRef = doc(fs, 'sensor_history', sensorKey);
-              await setDoc(sensorDocRef, {
-                sensorKey,
-                timestamp,
-                voltage: toNumber(payload.voltage),
-                current: toNumber(payload.current),
-                power: toNumber(payload.power),
-                lux: toNumber(payload.lux),
-                ldr: toNumber(payload.ldr),
-                motion: toNumber(payload.motion ?? payload.microwave),
-                ledStatus: payload.ledStatus ?? null,
-                batteryStatus: payload.batteryStatus ?? null,
-                soh: toNumber(payload.soh),
-                timeMillis: toNumber(payload.timeMillis),
-                createdAt: Date.now(),
-              }, { merge: true });
-
-              syncedSensorKeys.current.add(sensorKey);
-
-              const faults = detectFaults(sensorKey, payload);
-              for (const fault of faults) {
-                const faultId = `${sensorKey}_${fault.type}`;
-                if (syncedFaultKeys.current.has(faultId)) continue;
-                const faultDocRef = doc(fs, 'faults', faultId);
-                await setDoc(faultDocRef, {
-                  ...fault,
-                  resolved: false,
-                  createdAt: Date.now(),
-                }, { merge: true });
-                syncedFaultKeys.current.add(faultId);
-              }
-            }
-
-            console.log('[FirestoreSync] Synced sensor logs and faults', {
-              syncedSensorCount: syncedSensorKeys.current.size,
-              syncedFaultCount: syncedFaultKeys.current.size,
-            });
-            setLastSyncedAt(Date.now());
-            setIsSyncing(false);
-          },
-          (error) => {
-            console.error('[FirestoreSync] RTDB listener error', error);
-            setIsSyncing(false);
-          }
-        );
-      })
-      .catch((error) => {
-        console.error('[FirestoreSync] Auth failed', error);
-        setIsSyncing(false);
+    if (Number.isFinite(voltage) && voltage < 11.5) {
+      faults.push({
+        id: `${entry.id}_LOW_VOLTAGE`,
+        type: 'LOW_VOLTAGE',
+        severity: 'high',
+        value: voltage,
+        timestamp: entry.timestamp,
+        timeLabel: entry.timestampLabel,
+        resolved: false,
+        sensorKey: entry.id,
       });
+    }
+    if (Number.isFinite(current) && current < 50) {
+      faults.push({
+        id: `${entry.id}_BULB_FAILURE`,
+        type: 'BULB_FAILURE',
+        severity: 'high',
+        value: current,
+        timestamp: entry.timestamp,
+        timeLabel: entry.timestampLabel,
+        resolved: false,
+        sensorKey: entry.id,
+      });
+    }
+    if (Number.isFinite(lux) && lux < 10) {
+      faults.push({
+        id: `${entry.id}_LOW_LIGHT_OUTPUT`,
+        type: 'LOW_LIGHT_OUTPUT',
+        severity: 'medium',
+        value: lux,
+        timestamp: entry.timestamp,
+        timeLabel: entry.timestampLabel,
+        resolved: false,
+        sensorKey: entry.id,
+      });
+    }
+  });
 
-    return () => {
-      cancelled = true;
-      if (unsub) unsub();
-    };
-  }, []);
-
-  return { isSyncing, lastSyncedAt };
+  return faults.sort((a, b) => b.timestamp - a.timestamp);
 };
 
-export const useFirestoreFaults = (filter: FirestoreFaultFilter) => {
-  const [faults, setFaults] = useState<FirestoreFault[]>([]);
+const HISTORY_COLLECTION_PATH = 'sensorLogs/Streetlight_1/readings';
+
+export const useFirestoreHistory = () => {
+  const [entries, setEntries] = useState<FirestoreHistoryEntry[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -209,22 +125,36 @@ export const useFirestoreFaults = (filter: FirestoreFaultFilter) => {
       return;
     }
 
-    const q = query(collection(fs, 'faults'), orderBy('timestamp', 'desc'));
+    const q = query(collection(fs, HISTORY_COLLECTION_PATH), orderBy('__name__', 'desc'));
     const unsub = onSnapshot(
       q,
       (snapshot) => {
-        const next = snapshot.docs.map((docSnap) => {
-          const data = docSnap.data() as Omit<FirestoreFault, 'id'>;
+        const next: FirestoreHistoryEntry[] = snapshot.docs.map((docSnap) => {
+          const data = docSnap.data() as Record<string, unknown>;
+          const rawTime = typeof data.Time === 'string' ? data.Time : null;
+          const timestamp = rawTime ? parseEspTimeToMs(rawTime) ?? 0 : 0;
           return {
             id: docSnap.id,
-            ...data,
+            timestamp,
+            timestampLabel: timestamp ? toDisplayTime(timestamp) : '--',
+            rawTime,
+            voltage: data.voltage as number | string | null | undefined,
+            current: data.current as number | string | null | undefined,
+            power: data.power as number | string | null | undefined,
+            lux: data.lux as number | string | null | undefined,
+            ldr: data.ldr as number | string | null | undefined,
+            microwave: (data.motion ?? data.microwave) as number | string | boolean | null | undefined,
+            motion: (data.motion ?? data.microwave) as number | string | boolean | null | undefined,
+            ledStatus: data.ledStatus as string | null | undefined,
+            batteryStatus: data.batteryStatus as string | null | undefined,
+            soh: data.soh as number | string | null | undefined,
           };
         });
-        setFaults(next);
+        setEntries(next);
         setLoading(false);
       },
       (error) => {
-        console.error('[FirestoreFaults] Snapshot error', error);
+        console.error('[FirestoreHistory] Snapshot error', error);
         setLoading(false);
       }
     );
@@ -232,14 +162,70 @@ export const useFirestoreFaults = (filter: FirestoreFaultFilter) => {
     return () => unsub();
   }, []);
 
-  const resolveFault = useCallback(async (faultId: string) => {
+  return { entries, loading };
+};
+
+export const useFirestoreFaults = (filter: FirestoreFaultFilter) => {
+  const { entries, loading: historyLoading } = useFirestoreHistory();
+  const [existingFaults, setExistingFaults] = useState<FirestoreFault[]>([]);
+  const [faults, setFaults] = useState<FirestoreFault[]>([]);
+  const [faultsLoading, setFaultsLoading] = useState(true);
+
+  useEffect(() => {
     const fs = getFirebaseFirestore();
-    if (!fs) return;
-    await updateDoc(doc(fs, 'faults', faultId), {
-      resolved: true,
-      resolvedAt: Date.now(),
-    });
+    if (!fs) {
+      setFaultsLoading(false);
+      return;
+    }
+
+    const q = query(collection(fs, 'faults'), orderBy('timestamp', 'desc'));
+    const unsub = onSnapshot(
+      q,
+      (snapshot) => {
+        const next = snapshot.docs.map((docSnap) => {
+          const data = docSnap.data() as Record<string, unknown>;
+          const rawTime = typeof data.Time === 'string' ? data.Time : null;
+          const parsedTs = rawTime ? parseEspTimeToMs(rawTime) ?? 0 : toNumber(data.timestamp);
+          const timestamp = Number.isFinite(parsedTs) ? parsedTs : 0;
+          const resolvedAt = toNumber(data.resolvedAt);
+          return {
+            id: docSnap.id,
+            type: (data.type as FirestoreFaultType) ?? 'LOW_VOLTAGE',
+            severity: (data.severity as 'low' | 'medium' | 'high') ?? 'medium',
+            value: toNumber(data.value),
+            timestamp,
+            timeLabel: timestamp ? toDisplayTime(timestamp) : '--',
+            resolved: Boolean(data.resolved),
+            sensorKey: String(data.sensorKey ?? docSnap.id),
+            resolvedAt: Number.isFinite(resolvedAt) ? resolvedAt : undefined,
+          };
+        });
+        setExistingFaults(next);
+        setFaultsLoading(false);
+      },
+      (error) => {
+        console.error('[FirestoreFaults] Snapshot error', error);
+        setFaultsLoading(false);
+      }
+    );
+
+    return () => unsub();
   }, []);
+
+  useEffect(() => {
+    const derived = deriveFaultsFromHistory(entries);
+    if (existingFaults.length === 0) {
+      setFaults(derived);
+      return;
+    }
+
+    const resolvedByKey = new Map(existingFaults.map((f) => [`${f.sensorKey}_${f.type}`, f.resolved]));
+    const merged = derived.map((f) => ({
+      ...f,
+      resolved: resolvedByKey.get(`${f.sensorKey}_${f.type}`) ?? false,
+    }));
+    setFaults(merged);
+  }, [entries, existingFaults]);
 
   const filteredFaults = useMemo(() => {
     if (filter === 'resolved') return faults.filter((fault) => fault.resolved);
@@ -247,5 +233,5 @@ export const useFirestoreFaults = (filter: FirestoreFaultFilter) => {
     return faults;
   }, [faults, filter]);
 
-  return { faults: filteredFaults, loading, resolveFault };
+  return { faults: filteredFaults, loading: historyLoading || faultsLoading };
 };

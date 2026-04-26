@@ -219,7 +219,7 @@ const StreetlightCard: React.FC<StreetlightCardProps> = ({ streetlight }) => {
         <div className="pt-2 border-t border-border">
           <p className="text-xs text-muted-foreground">
             {hasData
-              ? `Last updated: ${new Date(streetlight.lastUpdated).toLocaleTimeString()}`
+              ? `Last updated: ${streetlight.lastUpdated > 0 ? new Date(streetlight.lastUpdated).toLocaleString() : '--'}`
               : 'No data received yet'}
           </p>
         </div>

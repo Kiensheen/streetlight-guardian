@@ -3,13 +3,11 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { History as HistoryIcon, Zap, Sun, Move } from 'lucide-react';
-import { getFirebaseDatabase, ref, onValue, ensureFirebaseAuth } from '@/lib/database';
+import { useFirestoreHistory } from '@/hooks/useFirestoreMonitoring';
 
 interface HistoryEntry {
   key: string;
   timestampLabel: string;
-  timestampMs: number;
-  timeMillis: number | null;
   voltage: number;
   current: number;
   power: number;
@@ -23,96 +21,23 @@ const toFiniteNumber = (value: unknown): number => {
   return Number.isFinite(parsed) ? parsed : Number.NaN;
 };
 
-const estimateTimestampFromLog = (value: Record<string, unknown>, key: string): number => {
-  const timeMillis = toFiniteNumber(value.timeMillis);
-  if (Number.isFinite(timeMillis) && timeMillis >= 0) {
-    return Math.max(0, Date.now() - timeMillis);
-  }
-
-  const keyNum = Number(key);
-  if (Number.isFinite(keyNum) && keyNum > 0) {
-    return keyNum >= 1_000_000_000_000 ? keyNum : keyNum * 1000;
-  }
-
-  return Date.now();
-};
-
 const HistoryList: React.FC = () => {
+  const { entries: firestoreEntries, loading } = useFirestoreHistory();
   const [entries, setEntries] = useState<HistoryEntry[]>([]);
-  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const db = getFirebaseDatabase();
-    if (!db) {
-      setLoading(false);
-      return;
-    }
-
-    let unsub: (() => void) | undefined;
-    let cancelled = false;
-
-    ensureFirebaseAuth()
-      .then(() => {
-        if (cancelled) return;
-        const r = ref(db, 'sensorLogs');
-        unsub = onValue(
-          r,
-          (snap) => {
-            if (!snap.exists()) {
-              setEntries([]);
-              setLoading(false);
-              return;
-            }
-            const val = snap.val() as Record<string, Record<string, unknown>>;
-            const list: HistoryEntry[] = Object.entries(val)
-              .map(([key, v]) => {
-                const timestampMs = estimateTimestampFromLog(v, key);
-                const timeMillis = toFiniteNumber(v.timeMillis);
-                return {
-                  key,
-                  timestampMs,
-                  timestampLabel: new Date(timestampMs).toLocaleString(undefined, {
-                    month: 'short',
-                    day: '2-digit',
-                    year: 'numeric',
-                    hour: 'numeric',
-                    minute: '2-digit',
-                    second: '2-digit',
-                  }),
-                  timeMillis: Number.isFinite(timeMillis) ? timeMillis : null,
-                  voltage: toFiniteNumber(v.voltage),
-                  current: toFiniteNumber(v.current),
-                  power: toFiniteNumber(v.power),
-                  lux: toFiniteNumber(v.lux),
-                  ldr: toFiniteNumber(v.ldr),
-                  microwave: toFiniteNumber(v.motion ?? v.microwave),
-                };
-              })
-              .sort((a, b) => b.timestampMs - a.timestampMs)
-              .slice(0, 50);
-            console.log('[HistoryList] Loaded latest history entries', {
-              count: list.length,
-              first: list[0],
-            });
-            setEntries(list);
-            setLoading(false);
-          },
-          (err) => {
-            console.error('[HistoryList] Listener error', err);
-            setLoading(false);
-          }
-        );
-      })
-      .catch((e) => {
-        console.error('[HistoryList] Auth failed', e);
-        setLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-      if (unsub) unsub();
-    };
-  }, []);
+    const list: HistoryEntry[] = firestoreEntries.slice(0, 50).map((entry) => ({
+      key: entry.id,
+      timestampLabel: entry.timestampLabel,
+      voltage: toFiniteNumber(entry.voltage),
+      current: toFiniteNumber(entry.current),
+      power: toFiniteNumber(entry.power),
+      lux: toFiniteNumber(entry.lux),
+      ldr: toFiniteNumber(entry.ldr),
+      microwave: toFiniteNumber(entry.motion ?? entry.microwave),
+    }));
+    setEntries(list);
+  }, [firestoreEntries]);
 
   return (
     <Card className="border-border/50">
@@ -121,7 +46,7 @@ const HistoryList: React.FC = () => {
           <HistoryIcon className="h-4 w-4 text-primary" />
           Sensor Logs
           <Badge variant="outline" className="ml-auto text-xs">
-            /sensorLogs
+            sensorLogs/Streetlight_1/readings
           </Badge>
         </CardTitle>
       </CardHeader>
@@ -158,7 +83,6 @@ const HistoryList: React.FC = () => {
                       <Move className="h-3 w-3" />
                       {Number.isFinite(e.microwave) ? (e.microwave === 1 ? 'Yes' : 'No') : '--'}
                     </span>
-                    <span>timeMillis: {e.timeMillis ?? '--'}</span>
                   </div>
                 </div>
               </div>

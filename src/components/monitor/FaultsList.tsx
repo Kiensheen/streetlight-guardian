@@ -84,7 +84,7 @@ const faultTypeLabels: Record<FaultType, string> = {
                      <div className="flex items-center gap-1 mt-2 text-xs opacity-70">
                        <Clock className="h-3 w-3" />
                        <span>
-                         Detected: {new Date(fault.detectedAt).toLocaleString()}
+                        Detected: {fault.detectedAt > 0 ? new Date(fault.detectedAt).toLocaleString() : '--'}
                        </span>
                      </div>
                    </div>

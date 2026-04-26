@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Streetlight, Fault, Notification, LightStatus, HealthStatus, FaultType } from '@/types/streetlight';
-import { getFirebaseDatabase, ref, get, query, orderByKey, limitToLast, ensureFirebaseAuth } from '@/lib/database';
+import { getFirebaseDatabase, ref, get, ensureFirebaseAuth } from '@/lib/database';
 
 const faultTypeLabels: Record<FaultType, string> = {
   off_when_scheduled_on: 'Light Off',
@@ -10,7 +10,7 @@ const faultTypeLabels: Record<FaultType, string> = {
   low_battery: 'Low Battery',
 };
 
-const SENSORS_PATH = 'sensorLogs';
+const SENSORS_PATH = 'sensorLogs/Streetlights-1';
 const NODE_CONFIG: { nodeId: string; path: string | null; name: string; location: string }[] = [
   { nodeId: 'node1', path: SENSORS_PATH, name: 'Streetlight 1', location: 'Main Street North' },
   { nodeId: 'node2', path: null, name: 'Streetlight 2', location: 'Main Street Center' },
@@ -18,6 +18,7 @@ const NODE_CONFIG: { nodeId: string; path: string | null; name: string; location
 ];
 
 type SensorLogValue = {
+  Time?: string | null;
   voltage?: number | string | null;
   current?: number | string | null;
   power?: number | string | null;
@@ -65,24 +66,33 @@ const getHealthStatus = (status: LightStatus, voltage: number): HealthStatus => 
   }
 };
 
-const toSortableTimestamp = (key: string, value: unknown): number => {
-  const raw = value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
-  const keyNumeric = Number(key);
-  if (Number.isFinite(keyNumeric) && keyNumeric > 0) {
-    return keyNumeric >= 1_000_000_000_000 ? keyNumeric : keyNumeric * 1000;
+const parseEspTimeToMs = (value: unknown): number | null => {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  const match = /^(\d{2})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2}):(\d{2})$/.exec(trimmed);
+  if (!match) return null;
+
+  const [, mm, dd, yy, hh, min, sec] = match;
+  const month = Number(mm);
+  const day = Number(dd);
+  const year = 2000 + Number(yy);
+  const hour = Number(hh);
+  const minute = Number(min);
+  const second = Number(sec);
+  if (
+    !Number.isFinite(month) || !Number.isFinite(day) || !Number.isFinite(year) ||
+    !Number.isFinite(hour) || !Number.isFinite(minute) || !Number.isFinite(second)
+  ) {
+    return null;
   }
-  const millis = Number(raw.timeMillis);
-  if (Number.isFinite(millis) && millis >= 0) {
-    return Date.now() - millis;
-  }
-  return 0;
+  return new Date(year, month - 1, day, hour, minute, second).getTime();
 };
 
 const getLatestSensorLog = (snapshotValue: unknown): { key: string | null; value: SensorLogValue | null } => {
   if (!snapshotValue || typeof snapshotValue !== 'object') return { key: null, value: null };
 
   const record = snapshotValue as Record<string, unknown>;
-  const directFieldNames = ['voltage', 'current', 'power', 'lux', 'ldr', 'microwave', 'motion', 'ledStatus', 'batteryStatus', 'soh', 'timeMillis', 'timeStamp'];
+  const directFieldNames = ['Time', 'voltage', 'current', 'power', 'lux', 'ldr', 'microwave', 'motion', 'ledStatus', 'batteryStatus', 'soh', 'timeMillis', 'timeStamp'];
   if (directFieldNames.some(field => field in record)) {
     return { key: null, value: record as SensorLogValue };
   }
@@ -90,24 +100,18 @@ const getLatestSensorLog = (snapshotValue: unknown): { key: string | null; value
   const entries = Object.entries(record).filter(([, value]) => value && typeof value === 'object');
   if (entries.length === 0) return { key: null, value: null };
 
-  entries.sort((a, b) => toSortableTimestamp(b[0], b[1]) - toSortableTimestamp(a[0], a[1]));
+  entries.sort((a, b) => b[0].localeCompare(a[0]));
   const [key, value] = entries[0];
   return { key, value: value as SensorLogValue };
 };
 
-const parseKeyTimestamp = (key: string | null): number => {
-  if (!key) return Date.now();
-  const numeric = Number(key);
-  if (!Number.isFinite(numeric) || numeric <= 0) return Date.now();
-  return numeric >= 1_000_000_000_000 ? numeric : numeric * 1000;
-};
-
 const estimateLogTimestamp = (key: string | null, value: SensorLogValue): number => {
-  const millisSinceBoot = Number(value.timeMillis);
-  if (Number.isFinite(millisSinceBoot) && millisSinceBoot >= 0) {
-    return Math.max(0, Date.now() - millisSinceBoot);
-  }
-  return parseKeyTimestamp(key);
+  const parsedTime = parseEspTimeToMs(value.Time);
+  if (parsedTime !== null) return parsedTime;
+  if (!key) return 0;
+  const numeric = Number(key);
+  if (!Number.isFinite(numeric) || numeric <= 0) return 0;
+  return numeric >= 1_000_000_000_000 ? numeric : numeric * 1000;
 };
 
 const generateFaults = (streetlights: Streetlight[]): Fault[] => {
@@ -122,7 +126,7 @@ const generateFaults = (streetlights: Streetlight[]): Fault[] => {
         streetlightName: sl.name,
         type: 'dim_output',
         severity: 'high',
-        detectedAt: Date.now(),
+        detectedAt: sl.lastUpdated > 0 ? sl.lastUpdated : 0,
         resolved: false,
         description: `LED Degraded - Bulb replacement needed`,
       });
@@ -134,7 +138,7 @@ const generateFaults = (streetlights: Streetlight[]): Fault[] => {
         streetlightName: sl.name,
         type: 'low_battery',
         severity: 'high',
-        detectedAt: Date.now(),
+        detectedAt: sl.lastUpdated > 0 ? sl.lastUpdated : 0,
         resolved: false,
         description: `Battery Degraded - Check battery health`,
       });
@@ -146,7 +150,7 @@ const generateFaults = (streetlights: Streetlight[]): Fault[] => {
         streetlightName: sl.name,
         type: 'low_battery',
         severity: 'medium',
-        detectedAt: Date.now(),
+        detectedAt: sl.lastUpdated > 0 ? sl.lastUpdated : 0,
         resolved: false,
         description: `Battery State of Health critical (${sl.soh.toFixed(0)}%)`,
       });
@@ -173,7 +177,7 @@ const generateFaults = (streetlights: Streetlight[]): Fault[] => {
       streetlightName: sl.name,
       type: faultType,
       severity: sl.healthStatus === 'fault' ? 'high' : 'medium',
-      detectedAt: Date.now(),
+      detectedAt: sl.lastUpdated > 0 ? sl.lastUpdated : 0,
       resolved: false,
       description,
     });
@@ -268,8 +272,7 @@ export const useSensorData = () => {
     await Promise.all(NODE_CONFIG.map(async (cfg) => {
       if (!cfg.path) return;
 
-      const latestQuery = query(ref(database, cfg.path), orderByKey(), limitToLast(1));
-      const snap = await get(latestQuery);
+      const snap = await get(ref(database, cfg.path));
       console.log(`[SensorData] Latest read for ${cfg.nodeId}`, {
         path: `/${cfg.path}`,
         exists: snap.exists(),
