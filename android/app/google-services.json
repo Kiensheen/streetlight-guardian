@@ -1,0 +1,30 @@
+{
+  "project_info": {
+    "project_number": "182498251796",
+    "firebase_url": "https://streetlight-thesis-default-rtdb.asia-southeast1.firebasedatabase.app",
+    "project_id": "streetlight-thesis",
+    "storage_bucket": "streetlight-thesis.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:182498251796:android:1349581e9fe844c73f4301",
+        "android_client_info": {
+          "package_name": "com.ustp.streetlight"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAE5Wma7QwfS1vKgCEz-4Wvw8tB03fTQys"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
