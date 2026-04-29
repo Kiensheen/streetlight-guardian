@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { getFirebaseFirestore } from '@/lib/database';
 import { collection, getDocs, orderBy, query } from 'firebase/firestore';
+import { applyStreetlight2Ina219Simulation } from '@/lib/streetlight2Ina219Simulation';
 
 export type FirestoreFaultType = 'LOW_VOLTAGE' | 'BULB_FAILURE' | 'LOW_LIGHT_OUTPUT';
 export type StreetlightKey = 'streetlight_1' | 'streetlight_2';
@@ -48,6 +49,7 @@ const STREETLIGHT_CONFIG: Record<StreetlightKey, { label: string; firestorePath:
 const FIRESTORE_CACHE_TTL_MS = 60 * 1000;
 const FIRESTORE_AUTO_REFRESH_MS = 30 * 1000;
 const FIRESTORE_USAGE_STORAGE_KEY = 'firestoreReadUsageEstimate';
+const STREETLIGHT_1_RECENT_TIMEOUT_MS = 5 * 60 * 1000;
 
 type CacheEntry = {
   entries: FirestoreHistoryEntry[];
@@ -231,6 +233,23 @@ const fetchStreetlightHistory = async (streetlight: StreetlightKey, options?: { 
   if (!force && hasFreshCache) return cache.entries;
   if (cache.promise) return cache.promise;
 
+  const getIsStreetlight1Recent = (): boolean => {
+    const sl1Entries = firestoreCache.streetlight_1.entries;
+    const latestTimestamp = sl1Entries.reduce((max, e) => {
+      if (!Number.isFinite(e.timestamp) || e.timestamp <= 0) return max;
+      return e.timestamp > max ? e.timestamp : max;
+    }, 0);
+    return latestTimestamp > 0 && (Date.now() - latestTimestamp) <= STREETLIGHT_1_RECENT_TIMEOUT_MS;
+  };
+
+  // Streetlight 2 simulation should only run when Streetlight 1 has sent data recently.
+  // This prevents artificial telemetry when SL1 is offline in the same deployment area.
+  if (streetlight === 'streetlight_2' && firestoreCache.streetlight_1.entries.length === 0) {
+    await fetchStreetlightHistory('streetlight_1', { force: false });
+  }
+
+  const streetlight1Recent = streetlight === 'streetlight_2' ? getIsStreetlight1Recent() : true;
+
   const fs = getFirebaseFirestore();
   if (!fs) {
     cache.loading = false;
@@ -245,10 +264,50 @@ const fetchStreetlightHistory = async (streetlight: StreetlightKey, options?: { 
 
   cache.promise = getDocs(query(collection(fs, STREETLIGHT_CONFIG[streetlight].firestorePath), orderBy('Time', 'desc')))
     .then((snapshot) => {
-      const entries = parseSnapshot(
+      let entries = parseSnapshot(
         snapshot.docs as unknown as Array<{ id: string; data: () => Record<string, unknown> }>,
         streetlight
       );
+      // Streetlight 2: fill missing INA219-derived fields (voltage/current/power)
+      // using only Streetlight 2's own ldr/lux/microwave, preserving any real fields.
+      if (streetlight === 'streetlight_2') {
+        entries = entries.map((entry) => {
+          const realVoltage = toNumber(entry.voltage);
+          const realCurrent = toNumber(entry.current);
+          const realPower = toNumber(entry.power);
+
+          const ldr = toNumber(entry.ldr);
+          const lux = toNumber(entry.lux);
+          const microwave = toNumber(entry.microwave ?? entry.motion);
+
+          const needsIna219 =
+            !Number.isFinite(realVoltage) || !Number.isFinite(realCurrent) || !Number.isFinite(realPower);
+
+          const canSimulateInputs =
+            Number.isFinite(ldr) && Number.isFinite(lux) && Number.isFinite(microwave);
+
+          if (!streetlight1Recent) return entry;
+          if (!needsIna219 || !canSimulateInputs) return entry;
+
+          const motionFlag = (microwave === 1 ? 1 : 0) as 0 | 1;
+          const sim = applyStreetlight2Ina219Simulation({
+            realVoltage,
+            realCurrent,
+            realPower,
+            ldr,
+            lux,
+            motion: motionFlag,
+          });
+
+          return {
+            ...entry,
+            voltage: sim.voltage,
+            current: sim.current,
+            power: sim.power,
+          };
+        });
+      }
+
       cache.entries = entries;
       cache.fetchedAt = Date.now();
       cache.loading = false;
