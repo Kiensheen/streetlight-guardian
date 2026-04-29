@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import type { Streetlight, Fault, Notification, LightStatus, HealthStatus, FaultType } from '@/types/streetlight';
 import { getFirebaseDatabase, ref, onValue, ensureFirebaseAuth } from '@/lib/database';
 import { clearFaultNotification, sendFaultNotification } from '@/lib/nativePush';
-import { useStreetlight2Simulation } from '@/hooks/useStreetlight2Simulation';
+import { applyStreetlight2Ina219Simulation } from '@/lib/streetlight2Ina219Simulation';
 
 const faultTypeLabels: Record<FaultType, string> = {
   off_when_scheduled_on: 'Light Off',
@@ -193,13 +193,38 @@ const mapSnapshotToLight = (
   cfg: { nodeId: string; name: string; location: string },
   logKey: string | null,
 ): Streetlight => {
-  const voltage = toNumberOrNaN(v.voltage);
-  const currentMa = toNumberOrNaN(v.current);
-  const powerMw = toNumberOrNaN(v.power);
+  let voltage = toNumberOrNaN(v.voltage);
+  let currentMa = toNumberOrNaN(v.current);
+  let powerMw = toNumberOrNaN(v.power);
   const lux = toNumberOrNaN(v.lux);
   const ldr = toNumberOrNaN(v.ldr);
   const microwave = toNumberOrNaN(v.motion ?? v.microwave);
   const motion = hasNumber(microwave) ? microwave === 1 : undefined;
+
+  // Streetlight 2: simulate ONLY INA219-derived fields when they're missing,
+  // based solely on Streetlight 2's own ldr/lux/microwave from Firebase.
+  if (cfg.nodeId === 'node2') {
+    const needsIna219 =
+      !Number.isFinite(voltage) || !Number.isFinite(currentMa) || !Number.isFinite(powerMw);
+
+    const canSimulateInputs =
+      Number.isFinite(ldr) && Number.isFinite(lux) && Number.isFinite(microwave);
+
+    if (needsIna219 && canSimulateInputs) {
+      const motionFlag = (microwave === 1 ? 1 : 0) as 0 | 1;
+      const sim = applyStreetlight2Ina219Simulation({
+        realVoltage: voltage,
+        realCurrent: currentMa,
+        realPower: powerMw,
+        ldr,
+        lux,
+        motion: motionFlag,
+      });
+      voltage = sim.voltage;
+      currentMa = sim.current;
+      powerMw = sim.power;
+    }
+  }
 
   const ledStatus = typeof v.ledStatus === 'string' ? v.ledStatus : undefined;
   const batteryStatus = typeof v.batteryStatus === 'string' ? v.batteryStatus : undefined;
@@ -260,8 +285,6 @@ const emptyLight = (cfg: { nodeId: string; name: string; location: string }): St
 });
 
 export const useSensorData = () => {
-  useStreetlight2Simulation();
-
   const [readings, setReadings] = useState<Record<string, Streetlight>>({});
   const [resolvedFaultIds, setResolvedFaultIds] = useState<Set<string>>(new Set());
   const [faults, setFaults] = useState<Fault[]>([]);
@@ -270,6 +293,10 @@ export const useSensorData = () => {
   const [isFirebaseConnected, setIsFirebaseConnected] = useState(false);
   const [lastSync, setLastSync] = useState<number | null>(null);
   const previousActiveFaultIdsRef = useRef<Set<string>>(new Set());
+  const STREETLIGHT_1_RECENT_TIMEOUT_MS = 5 * 60 * 1000;
+  // Used to gate Streetlight 2 INA219 simulation/fake telemetry when Streetlight 1 is off.
+  // If SL1 hasn't reported recently, we treat SL2 as offline.
+  const streetlight1LastUpdatedRef = useRef<number>(0);
   const supportsBrowserNotifications = typeof window !== 'undefined' && 'Notification' in window;
 
   const subscribeLatestReadings = useCallback(async () => {
@@ -305,8 +332,26 @@ export const useSensorData = () => {
 
           const { key, value } = getLatestSensorLog(snap.val());
           if (!value) return;
+
+          if (cfg.nodeId === 'node2') {
+            const sl1LastUpdated = streetlight1LastUpdatedRef.current;
+            const streetlight1Recent = sl1LastUpdated > 0 && (Date.now() - sl1LastUpdated) <= STREETLIGHT_1_RECENT_TIMEOUT_MS;
+            if (!streetlight1Recent) {
+              // Streetlight 1 is considered off; do not simulate or even show SL2 telemetry.
+              setReadings(prev => ({ ...prev, [cfg.nodeId]: emptyLight(cfg) }));
+              setIsFirebaseConnected(false);
+              setLastSync(null);
+              setIsLoading(false);
+              return;
+            }
+          }
+
           const light = mapSnapshotToLight(value, cfg, key);
           setReadings(prev => ({ ...prev, [cfg.nodeId]: light }));
+          if (cfg.nodeId === 'node1') {
+            // If SL1's ESP timestamp can't be parsed, still treat the RTDB delivery as "recent".
+            streetlight1LastUpdatedRef.current = light.lastUpdated > 0 ? light.lastUpdated : Date.now();
+          }
           setIsFirebaseConnected(true);
           setLastSync(light.lastUpdated > 0 ? light.lastUpdated : null);
           setIsLoading(false);
