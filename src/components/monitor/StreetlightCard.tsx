@@ -153,7 +153,7 @@ const StreetlightCard: React.FC<StreetlightCardProps> = ({ streetlight }) => {
               {fmt(streetlight.ldr, 0)}
             </p>
             <p className="text-[10px] text-muted-foreground">
-              {showLive && hasValue(streetlight.ldr) ? (streetlight.ldr > 1000 ? 'Night' : streetlight.ldr < 500 ? 'Day' : 'Dusk') : '—'}
+              {showLive && hasValue(streetlight.ldr) ? (streetlight.ldr >= 1000 ? 'Day' : streetlight.ldr >= 500 ? 'Dusk' : 'Night') : '—'}
             </p>
           </div>
 
