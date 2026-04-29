@@ -42,21 +42,36 @@ const Monitor: React.FC = () => {
   } = useSensorData();
 
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const handleRefresh = async () => {
-    setIsRefreshing(true);
-    try { await refresh(); } finally { setTimeout(() => setIsRefreshing(false), 600); }
-  };
-
   const {
     dailyVoltage,
     weeklyVoltage,
     monthlyVoltage,
     weeklyPowerComparison,
     weeklyFaultFrequency,
+    latestFetchedAt,
+    dailyReadEstimate,
+    dailyQueryEstimate,
+    refresh: refreshFirestore,
+    cacheTtlMs,
   } = useFirestoreReportAnalytics();
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      await Promise.all([refresh(), refreshFirestore()]);
+    } finally {
+      setTimeout(() => setIsRefreshing(false), 600);
+    }
+  };
+
   const filteredFaults = faultStreetlightFilter === 'all'
     ? faults
     : faults.filter((fault) => fault.streetlightId === faultStreetlightFilter);
+
+  const firestoreLastUpdatedLabel = latestFetchedAt
+    ? new Date(latestFetchedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' })
+    : '--';
+  const cacheWindowSeconds = Math.round(cacheTtlMs / 1000);
 
   useEffect(() => {
     if (isDarkMode) {
@@ -99,9 +114,14 @@ const Monitor: React.FC = () => {
       <main className="px-4 py-4 pb-8 max-w-lg mx-auto">
         {/* Connection Status & Quick Stats */}
         <div className="flex items-center justify-between mb-4">
-          <span className="text-xs font-medium text-muted-foreground">
-            {isFirebaseConnected ? 'Firebase connected' : 'Firebase unavailable'}
-          </span>
+          <div className="space-y-1">
+            <span className="block text-xs font-medium text-muted-foreground">
+              {isFirebaseConnected ? 'Firebase connected' : 'Firebase unavailable'}
+            </span>
+            <span className="block text-[11px] text-muted-foreground">
+              Last updated: {firestoreLastUpdatedLabel}
+            </span>
+          </div>
           
           <div className="flex items-center gap-2">
             <Button
@@ -117,6 +137,22 @@ const Monitor: React.FC = () => {
             </Button>
           </div>
         </div>
+
+        <Card className="border-border/50 mb-4">
+          <CardContent className="p-3">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold">Firestore usage today</p>
+                <p className="text-[11px] text-muted-foreground">
+                  Estimated reads: {dailyReadEstimate.toLocaleString()} across {dailyQueryEstimate.toLocaleString()} queries
+                </p>
+              </div>
+              <div className="rounded-full border border-border/60 bg-muted/50 px-2 py-1 text-[11px] font-medium text-muted-foreground">
+                Cache {cacheWindowSeconds}s
+              </div>
+            </div>
+          </CardContent>
+        </Card>
 
         <Tabs defaultValue="monitoring" className="space-y-4">
           <TabsList className="w-full bg-muted/50">

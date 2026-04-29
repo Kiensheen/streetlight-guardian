@@ -1,7 +1,11 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { Streetlight, Fault, Notification, LightStatus, HealthStatus, FaultType } from '@/types/streetlight';
 import { getFirebaseDatabase, ref, onValue, ensureFirebaseAuth } from '@/lib/database';
+<<<<<<< HEAD
 import { clearFaultNotification, sendFaultNotification } from '@/lib/nativePush';
+=======
+import { useStreetlight2Simulation } from '@/hooks/useStreetlight2Simulation';
+>>>>>>> 553054b (Refactor Firestore monitoring logic and enhance data handling in useFirestoreMonitoring and Monitor components. Introduced caching and usage tracking for Firestore reads and queries, improving performance and user experience. Updated Monitor page to display Firestore usage statistics and last updated timestamp.)
 
 const faultTypeLabels: Record<FaultType, string> = {
   off_when_scheduled_on: 'Light Off',
@@ -259,6 +263,8 @@ const emptyLight = (cfg: { nodeId: string; name: string; location: string }): St
 });
 
 export const useSensorData = () => {
+  useStreetlight2Simulation();
+
   const [readings, setReadings] = useState<Record<string, Streetlight>>({});
   const [resolvedFaultIds, setResolvedFaultIds] = useState<Set<string>>(new Set());
   const [faults, setFaults] = useState<Fault[]>([]);

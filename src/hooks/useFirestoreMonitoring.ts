@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { getFirebaseFirestore } from '@/lib/database';
-import { collection, onSnapshot, orderBy, query } from 'firebase/firestore';
+import { collection, getDocs, orderBy, query } from 'firebase/firestore';
 
 export type FirestoreFaultType = 'LOW_VOLTAGE' | 'BULB_FAILURE' | 'LOW_LIGHT_OUTPUT';
 export type StreetlightKey = 'streetlight_1' | 'streetlight_2';
@@ -43,6 +43,120 @@ export interface WeeklyFaultPoint {
 const STREETLIGHT_CONFIG: Record<StreetlightKey, { label: string; firestorePath: string }> = {
   streetlight_1: { label: 'Streetlight 1', firestorePath: 'sensorLogs/Streetlight_1/readings' },
   streetlight_2: { label: 'Streetlight 2', firestorePath: 'sensorLogs/Streetlight_2/readings' },
+};
+
+const FIRESTORE_CACHE_TTL_MS = 60 * 1000;
+const FIRESTORE_AUTO_REFRESH_MS = 30 * 1000;
+const FIRESTORE_USAGE_STORAGE_KEY = 'firestoreReadUsageEstimate';
+
+type CacheEntry = {
+  entries: FirestoreHistoryEntry[];
+  fetchedAt: number | null;
+  loading: boolean;
+  error: boolean;
+  promise: Promise<FirestoreHistoryEntry[]> | null;
+};
+
+type UsageState = {
+  dayKey: string;
+  reads: number;
+  queries: number;
+  updatedAt: number;
+};
+
+type FirestoreMonitoringSnapshot = {
+  entriesByStreetlight: Record<StreetlightKey, FirestoreHistoryEntry[]>;
+  loadingByStreetlight: Record<StreetlightKey, boolean>;
+  latestFetchedAt: number | null;
+  dailyReadEstimate: number;
+  dailyQueryEstimate: number;
+};
+
+const createEmptyEntriesByStreetlight = (): Record<StreetlightKey, FirestoreHistoryEntry[]> => ({
+  streetlight_1: [],
+  streetlight_2: [],
+});
+
+const createEmptyLoadingByStreetlight = (): Record<StreetlightKey, boolean> => ({
+  streetlight_1: true,
+  streetlight_2: true,
+});
+
+const createCacheState = (): Record<StreetlightKey, CacheEntry> => ({
+  streetlight_1: { entries: [], fetchedAt: null, loading: true, error: false, promise: null },
+  streetlight_2: { entries: [], fetchedAt: null, loading: true, error: false, promise: null },
+});
+
+const firestoreCache: Record<StreetlightKey, CacheEntry> = createCacheState();
+const firestoreSubscribers = new Set<() => void>();
+
+const getTodayKey = (): string => new Date().toISOString().slice(0, 10);
+
+const readUsageState = (): UsageState => {
+  const fallback: UsageState = {
+    dayKey: getTodayKey(),
+    reads: 0,
+    queries: 0,
+    updatedAt: Date.now(),
+  };
+  if (typeof window === 'undefined') return fallback;
+  try {
+    const raw = window.localStorage.getItem(FIRESTORE_USAGE_STORAGE_KEY);
+    if (!raw) return fallback;
+    const parsed = JSON.parse(raw) as Partial<UsageState>;
+    const dayKey = getTodayKey();
+    if (parsed.dayKey !== dayKey) return fallback;
+    return {
+      dayKey,
+      reads: Number(parsed.reads) || 0,
+      queries: Number(parsed.queries) || 0,
+      updatedAt: Number(parsed.updatedAt) || Date.now(),
+    };
+  } catch {
+    return fallback;
+  }
+};
+
+let firestoreUsage: UsageState = readUsageState();
+
+const persistUsageState = () => {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(FIRESTORE_USAGE_STORAGE_KEY, JSON.stringify(firestoreUsage));
+};
+
+const ensureUsageDay = () => {
+  const dayKey = getTodayKey();
+  if (firestoreUsage.dayKey === dayKey) return;
+  firestoreUsage = { dayKey, reads: 0, queries: 0, updatedAt: Date.now() };
+  persistUsageState();
+};
+
+const notifyFirestoreSubscribers = () => {
+  firestoreSubscribers.forEach((subscriber) => subscriber());
+};
+
+const getMonitoringSnapshot = (): FirestoreMonitoringSnapshot => {
+  ensureUsageDay();
+  const entriesByStreetlight = createEmptyEntriesByStreetlight();
+  const loadingByStreetlight = createEmptyLoadingByStreetlight();
+  let latestFetchedAt: number | null = null;
+
+  (Object.keys(STREETLIGHT_CONFIG) as StreetlightKey[]).forEach((key) => {
+    entriesByStreetlight[key] = firestoreCache[key].entries;
+    loadingByStreetlight[key] = firestoreCache[key].loading;
+    const fetchedAt = firestoreCache[key].fetchedAt;
+    if (fetchedAt && (!latestFetchedAt || fetchedAt > latestFetchedAt)) {
+      latestFetchedAt = fetchedAt;
+    }
+  });
+
+  return {
+    entriesByStreetlight,
+    loadingByStreetlight,
+    latestFetchedAt,
+    dailyReadEstimate: firestoreUsage.reads,
+    dailyQueryEstimate: firestoreUsage.queries,
+  };
 };
 
 const toNumber = (value: unknown): number => {
@@ -108,65 +222,142 @@ const parseSnapshot = (docs: Array<{ id: string; data: () => Record<string, unkn
     };
   });
 
-export const useFirestoreHistory = (streetlight: StreetlightKey = 'streetlight_1') => {
-  const [entries, setEntries] = useState<FirestoreHistoryEntry[]>([]);
-  const [loading, setLoading] = useState(true);
+const fetchStreetlightHistory = async (streetlight: StreetlightKey, options?: { force?: boolean }): Promise<FirestoreHistoryEntry[]> => {
+  const force = options?.force ?? false;
+  const cache = firestoreCache[streetlight];
+  const now = Date.now();
+  const hasFreshCache = cache.fetchedAt !== null && now - cache.fetchedAt < FIRESTORE_CACHE_TTL_MS;
+
+  if (!force && hasFreshCache) return cache.entries;
+  if (cache.promise) return cache.promise;
+
+  const fs = getFirebaseFirestore();
+  if (!fs) {
+    cache.loading = false;
+    cache.error = true;
+    notifyFirestoreSubscribers();
+    return cache.entries;
+  }
+
+  cache.loading = true;
+  cache.error = false;
+  notifyFirestoreSubscribers();
+
+  cache.promise = getDocs(query(collection(fs, STREETLIGHT_CONFIG[streetlight].firestorePath), orderBy('Time', 'desc')))
+    .then((snapshot) => {
+      const entries = parseSnapshot(
+        snapshot.docs as unknown as Array<{ id: string; data: () => Record<string, unknown> }>,
+        streetlight
+      );
+      cache.entries = entries;
+      cache.fetchedAt = Date.now();
+      cache.loading = false;
+      cache.error = false;
+      ensureUsageDay();
+      firestoreUsage = {
+        dayKey: firestoreUsage.dayKey,
+        reads: firestoreUsage.reads + snapshot.size,
+        queries: firestoreUsage.queries + 1,
+        updatedAt: Date.now(),
+      };
+      persistUsageState();
+      return entries;
+    })
+    .catch(() => {
+      cache.loading = false;
+      cache.error = true;
+      return cache.entries;
+    })
+    .finally(() => {
+      cache.promise = null;
+      notifyFirestoreSubscribers();
+    });
+
+  return cache.promise;
+};
+
+const fetchAllStreetlightHistory = async (options?: { force?: boolean }) => {
+  await Promise.all((Object.keys(STREETLIGHT_CONFIG) as StreetlightKey[]).map((streetlight) =>
+    fetchStreetlightHistory(streetlight, options)
+  ));
+};
+
+const subscribeToFirestoreMonitoring = (listener: () => void) => {
+  firestoreSubscribers.add(listener);
+  return () => {
+    firestoreSubscribers.delete(listener);
+  };
+};
+
+const useFirestoreMonitoringState = () => {
+  const [snapshot, setSnapshot] = useState<FirestoreMonitoringSnapshot>(() => getMonitoringSnapshot());
 
   useEffect(() => {
-    const fs = getFirebaseFirestore();
-    if (!fs) {
-      setLoading(false);
-      return;
-    }
+    const syncSnapshot = () => setSnapshot(getMonitoringSnapshot());
+    syncSnapshot();
+    const unsubscribe = subscribeToFirestoreMonitoring(syncSnapshot);
+    return unsubscribe;
+  }, []);
 
-    const q = query(collection(fs, STREETLIGHT_CONFIG[streetlight].firestorePath), orderBy('Time', 'desc'));
-    const unsub = onSnapshot(q, (snapshot) => {
-      setEntries(parseSnapshot(snapshot.docs as unknown as Array<{ id: string; data: () => Record<string, unknown> }>, streetlight));
-      setLoading(false);
-    }, () => setLoading(false));
+  const refresh = useCallback(async (options?: { force?: boolean }) => {
+    await fetchAllStreetlightHistory(options);
+  }, []);
 
-    return () => unsub();
+  useEffect(() => {
+    void refresh();
+
+    const intervalId = window.setInterval(() => {
+      void refresh();
+    }, FIRESTORE_AUTO_REFRESH_MS);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [refresh]);
+
+  return {
+    ...snapshot,
+    refresh,
+  };
+};
+
+export const useFirestoreHistory = (streetlight: StreetlightKey = 'streetlight_1') => {
+  const { entriesByStreetlight, loadingByStreetlight, refresh } = useFirestoreMonitoringState();
+
+  useEffect(() => {
+    void fetchStreetlightHistory(streetlight);
   }, [streetlight]);
 
-  return { entries, loading };
+  return {
+    entries: entriesByStreetlight[streetlight],
+    loading: loadingByStreetlight[streetlight],
+    refresh: () => refresh({ force: true }),
+  };
 };
 
 export const useFirestoreHistoryByStreetlight = () => {
-  const [entriesByStreetlight, setEntriesByStreetlight] = useState<Record<StreetlightKey, FirestoreHistoryEntry[]>>({
-    streetlight_1: [],
-    streetlight_2: [],
-  });
-  const [loading, setLoading] = useState(true);
+  const { entriesByStreetlight, loadingByStreetlight, latestFetchedAt, dailyReadEstimate, dailyQueryEstimate, refresh } = useFirestoreMonitoringState();
+  const loading = loadingByStreetlight.streetlight_1 || loadingByStreetlight.streetlight_2;
 
-  useEffect(() => {
-    const fs = getFirebaseFirestore();
-    if (!fs) {
-      setLoading(false);
-      return;
-    }
-    const loaded: Record<StreetlightKey, boolean> = { streetlight_1: false, streetlight_2: false };
-    const unsubs = (Object.keys(STREETLIGHT_CONFIG) as StreetlightKey[]).map((key) => {
-      const q = query(collection(fs, STREETLIGHT_CONFIG[key].firestorePath), orderBy('Time', 'desc'));
-      return onSnapshot(q, (snapshot) => {
-        setEntriesByStreetlight((prev) => ({
-          ...prev,
-          [key]: parseSnapshot(snapshot.docs as unknown as Array<{ id: string; data: () => Record<string, unknown> }>, key),
-        }));
-        loaded[key] = true;
-        if (loaded.streetlight_1 && loaded.streetlight_2) setLoading(false);
-      }, () => {
-        loaded[key] = true;
-        if (loaded.streetlight_1 && loaded.streetlight_2) setLoading(false);
-      });
-    });
-    return () => unsubs.forEach((fn) => fn());
-  }, []);
-
-  return { entriesByStreetlight, loading };
+  return {
+    entriesByStreetlight,
+    loading,
+    latestFetchedAt,
+    dailyReadEstimate,
+    dailyQueryEstimate,
+    refresh,
+  };
 };
 
 export const useFirestoreReportAnalytics = () => {
-  const { entriesByStreetlight, loading } = useFirestoreHistoryByStreetlight();
+  const {
+    entriesByStreetlight,
+    loading,
+    latestFetchedAt,
+    dailyReadEstimate,
+    dailyQueryEstimate,
+    refresh,
+  } = useFirestoreHistoryByStreetlight();
 
   const analytics = useMemo(() => {
     const sl1Entries = entriesByStreetlight.streetlight_1.filter((e) => e.timestamp > 0);
@@ -273,5 +464,14 @@ export const useFirestoreReportAnalytics = () => {
     return { dailyVoltage, weeklyVoltage, monthlyVoltage, weeklyPowerComparison, weeklyFaultFrequency, faultsComparison };
   }, [entriesByStreetlight]);
 
-  return { ...analytics, loading };
+  return {
+    ...analytics,
+    loading,
+    latestFetchedAt,
+    dailyReadEstimate,
+    dailyQueryEstimate,
+    refresh: () => refresh({ force: true }),
+    cacheTtlMs: FIRESTORE_CACHE_TTL_MS,
+    autoRefreshMs: FIRESTORE_AUTO_REFRESH_MS,
+  };
 };
